@@ -57,7 +57,7 @@ class OrderServiceTest {
                         assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CREATED);
                     })
                     .dbChanges(db -> db
-                        .table("order").hasNewRows(1)
+                        .table("t_order").hasNewRows(1)
                     );
         }
 
@@ -81,7 +81,7 @@ class OrderServiceTest {
                         assertThat(order.getTotalAmount()).isEqualByComparingTo("180.00");
                     })
                     .dbChanges(db -> db
-                        .table("order").hasNewRows(1)
+                        .table("t_order").hasNewRows(1)
                     );
         }
 
@@ -128,7 +128,7 @@ class OrderServiceTest {
                     .exception(InsufficientBalanceException.class)
                         .hasMessageContaining("余额不足")
                     .dbChanges(db -> db
-                        .table("order").hasNoChanges()
+                        .table("t_order").hasNoChanges()
                     );
         }
 
@@ -149,7 +149,7 @@ class OrderServiceTest {
                 .assertThat()
                     .exception(InsufficientBalanceException.class)
                     .dbChanges(db -> db
-                        .table("order").hasNoChanges()
+                        .table("t_order").hasNoChanges()
                     );
         }
     }

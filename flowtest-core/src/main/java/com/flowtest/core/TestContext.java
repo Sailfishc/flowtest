@@ -112,18 +112,18 @@ public class TestContext {
 
     // Internal methods for building context
 
-    void addEntity(Class<?> type, Object entity) {
+    public void addEntity(Class<?> type, Object entity) {
         entities.computeIfAbsent(type, k -> new ArrayList<>()).add(entity);
     }
 
-    void addEntity(String alias, Class<?> type, Object entity) {
+    public void addEntity(String alias, Class<?> type, Object entity) {
         addEntity(type, entity);
         if (alias != null && !alias.isEmpty()) {
             aliasedEntities.put(alias, entity);
         }
     }
 
-    void recordPersistedId(Class<?> type, Object id) {
+    public void recordPersistedId(Class<?> type, Object id) {
         persistedIds.computeIfAbsent(type, k -> new ArrayList<>()).add(id);
     }
 
@@ -131,7 +131,7 @@ public class TestContext {
         return Collections.unmodifiableMap(persistedIds);
     }
 
-    void addWatchedTable(String tableName) {
+    public void addWatchedTable(String tableName) {
         watchedTables.add(tableName);
     }
 
@@ -143,7 +143,7 @@ public class TestContext {
         return beforeSnapshot;
     }
 
-    void setBeforeSnapshot(Map<String, TableSnapshot> beforeSnapshot) {
+    public void setBeforeSnapshot(Map<String, TableSnapshot> beforeSnapshot) {
         this.beforeSnapshot = beforeSnapshot;
     }
 
@@ -151,7 +151,7 @@ public class TestContext {
         return afterSnapshot;
     }
 
-    void setAfterSnapshot(Map<String, TableSnapshot> afterSnapshot) {
+    public void setAfterSnapshot(Map<String, TableSnapshot> afterSnapshot) {
         this.afterSnapshot = afterSnapshot;
     }
 
@@ -159,7 +159,7 @@ public class TestContext {
         return snapshotDiff;
     }
 
-    void setSnapshotDiff(SnapshotDiff snapshotDiff) {
+    public void setSnapshotDiff(SnapshotDiff snapshotDiff) {
         this.snapshotDiff = snapshotDiff;
     }
 
@@ -167,7 +167,7 @@ public class TestContext {
         return thrownException;
     }
 
-    void setThrownException(Throwable thrownException) {
+    public void setThrownException(Throwable thrownException) {
         this.thrownException = thrownException;
     }
 
@@ -176,7 +176,7 @@ public class TestContext {
         return (T) actResult;
     }
 
-    void setActResult(Object actResult) {
+    public void setActResult(Object actResult) {
         this.actResult = actResult;
     }
 

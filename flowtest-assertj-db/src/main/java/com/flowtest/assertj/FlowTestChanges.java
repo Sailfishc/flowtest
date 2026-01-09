@@ -2,6 +2,7 @@ package com.flowtest.assertj;
 
 import org.assertj.db.api.ChangesAssert;
 import org.assertj.db.type.Changes;
+import org.assertj.db.type.Table;
 
 import javax.sql.DataSource;
 import java.util.Arrays;
@@ -72,7 +73,11 @@ public class FlowTestChanges {
         if (tables.isEmpty()) {
             changes = new Changes(dataSource);
         } else {
-            changes = new Changes(dataSource).setTables(tables.toArray(new String[0]));
+            // Convert table names to Table objects
+            Table[] tableArray = tables.stream()
+                .map(name -> new Table(dataSource, name))
+                .toArray(Table[]::new);
+            changes = new Changes(tableArray);
         }
 
         changes.setStartPointNow();

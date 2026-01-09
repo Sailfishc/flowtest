@@ -1,11 +1,13 @@
 package com.example.demo.entity;
 
+import javax.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * Order entity.
  */
+@Table(name = "t_order")
 public class Order {
 
     private Long id;

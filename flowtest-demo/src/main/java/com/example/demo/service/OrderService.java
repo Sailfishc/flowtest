@@ -40,7 +40,7 @@ public class OrderService {
     public Order createOrder(Long userId, Long productId, int quantity) {
         // Get user
         User user = jdbcTemplate.queryForObject(
-            "SELECT * FROM user WHERE id = ?",
+            "SELECT * FROM t_user WHERE id = ?",
             (rs, rowNum) -> {
                 User u = new User();
                 u.setId(rs.getLong("id"));
@@ -53,7 +53,7 @@ public class OrderService {
 
         // Get product
         Product product = jdbcTemplate.queryForObject(
-            "SELECT * FROM product WHERE id = ?",
+            "SELECT * FROM t_product WHERE id = ?",
             (rs, rowNum) -> {
                 Product p = new Product();
                 p.setId(rs.getLong("id"));
@@ -81,7 +81,7 @@ public class OrderService {
 
         // Deduct balance
         jdbcTemplate.update(
-            "UPDATE user SET balance = balance - ? WHERE id = ?",
+            "UPDATE t_user SET balance = balance - ? WHERE id = ?",
             totalAmount, userId
         );
 
@@ -97,7 +97,7 @@ public class OrderService {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbcTemplate.update(connection -> {
             PreparedStatement ps = connection.prepareStatement(
-                "INSERT INTO `order` (user_id, product_id, quantity, total_amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO t_order (user_id, product_id, quantity, total_amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
                 Statement.RETURN_GENERATED_KEYS
             );
             ps.setLong(1, order.getUserId());

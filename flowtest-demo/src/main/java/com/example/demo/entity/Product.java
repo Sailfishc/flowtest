@@ -1,10 +1,12 @@
 package com.example.demo.entity;
 
+import javax.persistence.Table;
 import java.math.BigDecimal;
 
 /**
  * Product entity.
  */
+@Table(name = "t_product")
 public class Product {
 
     private Long id;

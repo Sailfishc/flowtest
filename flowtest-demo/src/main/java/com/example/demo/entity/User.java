@@ -1,11 +1,13 @@
 package com.example.demo.entity;
 
+import javax.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * User entity.
  */
+@Table(name = "t_user")
 public class User {
 
     private Long id;

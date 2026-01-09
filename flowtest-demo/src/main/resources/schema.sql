@@ -1,5 +1,5 @@
--- User table
-CREATE TABLE IF NOT EXISTS user (
+-- User table (using t_user to avoid reserved word)
+CREATE TABLE IF NOT EXISTS t_user (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(100) NOT NULL,
     email VARCHAR(200),
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS user (
 );
 
 -- Product table
-CREATE TABLE IF NOT EXISTS product (
+CREATE TABLE IF NOT EXISTS t_product (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(200) NOT NULL,
     description TEXT,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS product (
 );
 
 -- Order table
-CREATE TABLE IF NOT EXISTS `order` (
+CREATE TABLE IF NOT EXISTS t_order (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS `order` (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Audit log table (for testing assertions on secondary tables)
-CREATE TABLE IF NOT EXISTS audit_log (
+-- Audit log table
+CREATE TABLE IF NOT EXISTS t_audit_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     action VARCHAR(50) NOT NULL,
     entity_type VARCHAR(100),
