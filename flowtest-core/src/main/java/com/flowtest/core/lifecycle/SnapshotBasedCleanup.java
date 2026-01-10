@@ -27,39 +27,49 @@ public class SnapshotBasedCleanup implements CleanupStrategy {
 
     private final SnapshotEngine snapshotEngine;
     private final EntityPersister persister;
-    private String idColumnName = "id";
+    private String defaultIdColumn = "id";
+    private Map<String, String> tableIdColumns = new HashMap<>();
 
     public SnapshotBasedCleanup(SnapshotEngine snapshotEngine, EntityPersister persister) {
         this.snapshotEngine = snapshotEngine;
         this.persister = persister;
     }
 
-    public void setIdColumnName(String idColumnName) {
-        this.idColumnName = idColumnName;
+    public void setDefaultIdColumn(String columnName) {
+        this.defaultIdColumn = columnName;
+    }
+
+    public void setTableIdColumn(String tableName, String columnName) {
+        this.tableIdColumns.put(tableName.toLowerCase(), columnName);
+    }
+
+    private String getIdColumn(String tableName) {
+        return tableIdColumns.getOrDefault(tableName.toLowerCase(), defaultIdColumn);
     }
 
     @Override
     public void beforeTest(TestContext context) {
         // Record MAX(ID) for all tables as cleanup baseline
         Set<String> tables = snapshotEngine.listTableNames();
-        Map<String, Long> snapshot = new LinkedHashMap<>();
+        Map<String, Object> snapshot = new LinkedHashMap<>();
 
         JdbcTemplate jdbc = snapshotEngine.getJdbcTemplate();
 
         for (String table : tables) {
+            String idColumn = getIdColumn(table);
             try {
-                String sql = "SELECT MAX(" + idColumnName + ") FROM " + table;
-                Long maxId = jdbc.queryForObject(sql, Long.class);
-                snapshot.put(table, maxId != null ? maxId : 0L);
+                String sql = "SELECT MAX(" + idColumn + ") FROM " + table;
+                Object maxId = jdbc.queryForObject(sql, Object.class);
+                snapshot.put(table, maxId);
                 log.debug("Cleanup baseline for {}: maxId={}", table, maxId);
             } catch (Exception e) {
                 log.debug("Skipping table {} for cleanup: {}", table, e.getMessage());
-                snapshot.put(table, 0L);
+                snapshot.put(table, null);
             }
         }
 
         context.setCleanupSnapshot(snapshot);
-        log.debug("Recorded cleanup snapshot for  tables", snapshot.size());
+        log.debug("Recorded cleanup snapshot for {} tables", snapshot.size());
     }
 
     @Override
@@ -80,7 +90,7 @@ public class SnapshotBasedCleanup implements CleanupStrategy {
      * Deletes rows created during act() phase by comparing against baseline MAX(ID).
      */
     private void deleteActProducedData(TestContext context) {
-        Map<String, Long> baseline = context.getCleanupSnapshot();
+        Map<String, Object> baseline = context.getCleanupSnapshot();
         if (baseline.isEmpty()) {
             log.debug("No cleanup baseline found, skipping act-produced data cleanup");
             return;
@@ -88,16 +98,25 @@ public class SnapshotBasedCleanup implements CleanupStrategy {
 
         JdbcTemplate jdbc = snapshotEngine.getJdbcTemplate();
 
-        for (Map.Entry<String, Long> entry : baseline.entrySet()) {
-            String table = entry.getKey();
-            Long baselineMaxId = entry.getValue();
+        // Reverse order to handle foreign key dependencies
+        List<String> tables = new ArrayList<>(baseline.keySet());
+        Collections.reverse(tables);
+
+        for (String table : tables) {
+            Object baselineMaxId = baseline.get(table);
+            String idColumn = getIdColumn(table);
+
+            // Skip if baseline is null (table had no rows or no ID column)
+            if (baselineMaxId == null) {
+                continue;
+            }
 
             try {
-                String sql = "DELETE FROM " + table + " WHERE " + idColumnName + " > ?";
+                String sql = "DELETE FROM " + table + " WHERE " + idColumn + " > ?";
                 int deleted = jdbc.update(sql, baselineMaxId);
                 if (deleted > 0) {
-                    log.debug("Deleted {} act-produced rows from {} (id > {})",
-                        deleted, table, baselineMaxId);
+                    log.debug("Deleted {} act-produced rows from {} ({} > {})",
+                        deleted, table, idColumn, baselineMaxId);
                 }
             } catch (Exception e) {
                 log.warn("Failed to cleanup act-produced data from {}: {}", table, e.getMessage());

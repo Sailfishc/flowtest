@@ -7,12 +7,14 @@ import com.example.demo.traits.ProductTraits;
 import com.example.demo.traits.UserTraits;
 import com.flowtest.assertj.FlowTestChanges;
 import com.flowtest.core.TestFlow;
+import com.flowtest.core.lifecycle.CleanupMode;
 import com.flowtest.junit5.FlowTest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.annotation.Propagation;
 
@@ -37,6 +39,9 @@ class OrderServiceTest {
 
     @Autowired
     DataSource dataSource;
+
+    @Autowired
+    JdbcTemplate jdbcTemplate;
 
     @Nested
     @DisplayName("场景: 创建订单成功")
@@ -302,6 +307,38 @@ class OrderServiceTest {
                         .table("t_order").hasNoChanges()
                         .table("t_user").hasNoChanges()
                     );
+        }
+    }
+
+    @Nested
+    @DisplayName("场景: 数据清理")
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    class DataCleanup {
+
+        @Test
+        @DisplayName("手动调用 cleanup() 清理 persist 数据")
+        void testManualCleanupPersistData() {
+            // 记录测试前的数据量
+            Long userCountBefore = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_user", Long.class);
+
+            // 创建测试数据
+            flow.arrange()
+                .add(User.class, UserTraits.normal(), UserTraits.balance(500.00))
+                .persist();
+
+            // 验证数据已创建
+            Long userCountDuring = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_user", Long.class);
+            assertThat(userCountDuring).isGreaterThan(userCountBefore);
+
+            // 手动清理
+            flow.cleanup();
+
+            // 验证 persist 数据已清理
+            Long userCountAfter = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM t_user", Long.class);
+            assertThat(userCountAfter).isEqualTo(userCountBefore);
         }
     }
 }

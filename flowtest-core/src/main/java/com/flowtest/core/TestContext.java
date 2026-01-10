@@ -38,8 +38,8 @@ public class TestContext {
     /** Return value from act phase */
     private Object actResult;
 
-    /** Cleanup snapshot: table name -> MAX(ID) before test */
-    private Map<String, Long> cleanupSnapshot = new LinkedHashMap<>();
+    /** Cleanup snapshot: table name -> MAX(ID) before test (supports various ID types) */
+    private Map<String, Object> cleanupSnapshot = new LinkedHashMap<>();
 
     /**
      * Gets the first entity of the given type.
@@ -183,11 +183,11 @@ public class TestContext {
         this.actResult = actResult;
     }
 
-    public Map<String, Long> getCleanupSnapshot() {
+    public Map<String, Object> getCleanupSnapshot() {
         return Collections.unmodifiableMap(cleanupSnapshot);
     }
 
-    public void setCleanupSnapshot(Map<String, Long> snapshot) {
+    public void setCleanupSnapshot(Map<String, Object> snapshot) {
         this.cleanupSnapshot = snapshot != null ? new LinkedHashMap<>(snapshot) : new LinkedHashMap<>();
     }
 

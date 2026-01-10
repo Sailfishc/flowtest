@@ -92,6 +92,9 @@ public class ArrangeBuilder {
      * @return the ActPhase for continuing the test flow
      */
     public ActPhase persist() {
+        // Record cleanup snapshot baseline before persisting
+        recordCleanupSnapshot();
+
         for (EntitySpec<?> spec : entitySpecs) {
             Object entity = buildAndPersist(spec);
             context.addEntity(spec.getAlias(), spec.getEntityClass(), entity);
@@ -135,5 +138,33 @@ public class ArrangeBuilder {
         spec.applyTraits(entity);
 
         return entity;
+    }
+
+    /**
+     * Records cleanup snapshot baseline for all tables.
+     * This is called before persist() to enable cleanup of act-produced data.
+     */
+    private void recordCleanupSnapshot() {
+        if (snapshotEngine == null) {
+            return;
+        }
+        if (!context.getCleanupSnapshot().isEmpty()) {
+            return; // Already recorded
+        }
+
+        java.util.Set<String> tables = snapshotEngine.listTableNames();
+        java.util.Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
+        org.springframework.jdbc.core.JdbcTemplate jdbc = snapshotEngine.getJdbcTemplate();
+
+        for (String table : tables) {
+            try {
+                String sql = "SELECT MAX(id) FROM " + table;
+                Object maxId = jdbc.queryForObject(sql, Object.class);
+                snapshot.put(table, maxId);
+            } catch (Exception e) {
+                snapshot.put(table, null);
+            }
+        }
+        context.setCleanupSnapshot(snapshot);
     }
 }
