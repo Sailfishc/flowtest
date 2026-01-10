@@ -106,17 +106,24 @@ public class SnapshotBasedCleanup implements CleanupStrategy {
             Object baselineMaxId = baseline.get(table);
             String idColumn = getIdColumn(table);
 
-            // Skip if baseline is null (table had no rows or no ID column)
-            if (baselineMaxId == null) {
-                continue;
-            }
-
             try {
-                String sql = "DELETE FROM " + table + " WHERE " + idColumn + " > ?";
-                int deleted = jdbc.update(sql, baselineMaxId);
-                if (deleted > 0) {
-                    log.debug("Deleted {} act-produced rows from {} ({} > {})",
-                        deleted, table, idColumn, baselineMaxId);
+                int deleted;
+                if (baselineMaxId == null) {
+                    // Table was empty before test - delete ALL rows
+                    String sql = "DELETE FROM " + table;
+                    deleted = jdbc.update(sql);
+                    if (deleted > 0) {
+                        log.debug("Deleted {} act-produced rows from {} (table was empty before test)",
+                            deleted, table);
+                    }
+                } else {
+                    // Delete rows with ID > baseline
+                    String sql = "DELETE FROM " + table + " WHERE " + idColumn + " > ?";
+                    deleted = jdbc.update(sql, baselineMaxId);
+                    if (deleted > 0) {
+                        log.debug("Deleted {} act-produced rows from {} ({} > {})",
+                            deleted, table, idColumn, baselineMaxId);
+                    }
                 }
             } catch (Exception e) {
                 log.warn("Failed to cleanup act-produced data from {}: {}", table, e.getMessage());

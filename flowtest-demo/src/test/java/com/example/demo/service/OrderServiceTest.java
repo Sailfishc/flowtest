@@ -74,37 +74,6 @@ class OrderServiceTest {
         }
 
         @Test
-        @DisplayName("普通用户创建订单 - 使用 FlowTestChanges 断言")
-        @Transactional(propagation = Propagation.NOT_SUPPORTED)
-        void testNormalUserCreateOrderWithFlowTestChanges() {
-            FlowTestChanges changes = new FlowTestChanges(dataSource, "t_order").setStartPointNow();
-            flow.arrange()
-                    .add(User.class, UserTraits.normal(), UserTraits.balance(1000.00))
-                    .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
-                .persist()
-
-                .act(() -> orderService.createOrder(
-                        flow.get(User.class).getId(),
-                        flow.get(Product.class).getId(),
-                        2))
-
-                .assertThat()
-                    .noException()
-                    .returnValue(order -> {
-                        assertThat(order).isNotNull();
-                        assertThat(order.getId()).isNotNull();
-                        assertThat(order.getTotalAmount()).isEqualByComparingTo("200.00");
-                        assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CREATED);
-                    });
-
-            changes.setEndPointNow();
-            changes.assertChanges()
-                .hasNumberOfChanges(1)
-                .changeOnTable("t_order")
-                    .isCreation();
-        }
-
-        @Test
         @DisplayName("VIP用户享受9折优惠")
         void testVipUserDiscount() {
             flow.arrange()
@@ -311,6 +280,53 @@ class OrderServiceTest {
     }
 
     @Nested
+    @DisplayName("场景: FlowTestChanges 断言 (非事务)")
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    class FlowTestChangesAssertion {
+
+        @Test
+        @DisplayName("普通用户创建订单 - 使用 FlowTestChanges 断言")
+        void testNormalUserCreateOrderWithFlowTestChanges() {
+            // 记录 baseline 用于清理 act 产生的数据
+            Long maxOrderId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(id), 0) FROM t_order", Long.class);
+
+            FlowTestChanges changes = new FlowTestChanges(dataSource, "t_order").setStartPointNow();
+            try {
+                flow.arrange()
+                        .add(User.class, UserTraits.normal(), UserTraits.balance(1000.00))
+                        .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                    .persist()
+
+                    .act(() -> orderService.createOrder(
+                            flow.get(User.class).getId(),
+                            flow.get(Product.class).getId(),
+                            2))
+
+                    .assertThat()
+                        .noException()
+                        .returnValue(order -> {
+                            assertThat(order).isNotNull();
+                            assertThat(order.getId()).isNotNull();
+                            assertThat(order.getTotalAmount()).isEqualByComparingTo("200.00");
+                            assertThat(order.getStatus()).isEqualTo(Order.OrderStatus.CREATED);
+                        });
+
+                changes.setEndPointNow();
+                changes.assertChanges()
+                    .hasNumberOfChanges(1)
+                    .changeOnTable("t_order")
+                        .isCreation();
+            } finally {
+                // 清理 act 产生的 Order 数据
+                jdbcTemplate.update("DELETE FROM t_order WHERE id > ?", maxOrderId);
+                // 清理 persist 产生的数据
+                flow.cleanup();
+            }
+        }
+    }
+
+    @Nested
     @DisplayName("场景: 数据清理")
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     class DataCleanup {
@@ -322,23 +338,28 @@ class OrderServiceTest {
             Long userCountBefore = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM t_user", Long.class);
 
-            // 创建测试数据
-            flow.arrange()
-                .add(User.class, UserTraits.normal(), UserTraits.balance(500.00))
-                .persist();
+            try {
+                // 创建测试数据
+                flow.arrange()
+                    .add(User.class, UserTraits.normal(), UserTraits.balance(500.00))
+                    .persist();
 
-            // 验证数据已创建
-            Long userCountDuring = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM t_user", Long.class);
-            assertThat(userCountDuring).isGreaterThan(userCountBefore);
+                // 验证数据已创建
+                Long userCountDuring = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM t_user", Long.class);
+                assertThat(userCountDuring).isGreaterThan(userCountBefore);
 
-            // 手动清理
-            flow.cleanup();
+                // 手动清理
+                flow.cleanup();
 
-            // 验证 persist 数据已清理
-            Long userCountAfter = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM t_user", Long.class);
-            assertThat(userCountAfter).isEqualTo(userCountBefore);
+                // 验证 persist 数据已清理
+                Long userCountAfter = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM t_user", Long.class);
+                assertThat(userCountAfter).isEqualTo(userCountBefore);
+            } finally {
+                // 确保即使测试失败也能清理
+                flow.cleanup();
+            }
         }
     }
 }

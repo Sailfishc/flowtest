@@ -119,16 +119,36 @@ public class FlowTestExtension implements BeforeEachCallback, AfterEachCallback 
 
     /**
      * Finds the TestFlow field in the test instance.
+     * For nested classes, also searches the enclosing class instance.
      */
     private TestFlow findTestFlow(Object testInstance) {
-        Class<?> clazz = testInstance.getClass();
+        // First try to find in the instance itself and its superclasses
+        TestFlow flow = findTestFlowInInstance(testInstance);
+        if (flow != null) {
+            return flow;
+        }
+
+        // For nested classes, try to find in the enclosing class instance
+        Object enclosingInstance = getEnclosingInstance(testInstance);
+        if (enclosingInstance != null) {
+            return findTestFlowInInstance(enclosingInstance);
+        }
+
+        return null;
+    }
+
+    /**
+     * Finds the TestFlow field in the given instance and its superclasses.
+     */
+    private TestFlow findTestFlowInInstance(Object instance) {
+        Class<?> clazz = instance.getClass();
 
         while (clazz != null && clazz != Object.class) {
             for (Field field : clazz.getDeclaredFields()) {
                 if (TestFlow.class.isAssignableFrom(field.getType())) {
                     try {
                         field.setAccessible(true);
-                        return (TestFlow) field.get(testInstance);
+                        return (TestFlow) field.get(instance);
                     } catch (IllegalAccessException e) {
                         log.warn("Failed to access TestFlow field: {}", e.getMessage());
                     }
@@ -138,6 +158,30 @@ public class FlowTestExtension implements BeforeEachCallback, AfterEachCallback 
         }
 
         return null;
+    }
+
+    /**
+     * Gets the enclosing class instance for nested test classes.
+     * For non-static inner classes, Java creates a synthetic field "this$0" that
+     * references the enclosing instance.
+     */
+    private Object getEnclosingInstance(Object testInstance) {
+        Class<?> clazz = testInstance.getClass();
+
+        // Check if this is a nested class (has an enclosing class)
+        if (clazz.getEnclosingClass() == null) {
+            return null;
+        }
+
+        // Try to find and access the synthetic field "this$0"
+        try {
+            Field enclosingField = clazz.getDeclaredField("this$0");
+            enclosingField.setAccessible(true);
+            return enclosingField.get(testInstance);
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            log.debug("Could not access enclosing instance: {}", e.getMessage());
+            return null;
+        }
     }
 
     /**

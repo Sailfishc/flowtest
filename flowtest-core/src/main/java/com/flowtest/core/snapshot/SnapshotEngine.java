@@ -172,13 +172,26 @@ public class SnapshotEngine {
             long beforeCount = beforeSnap != null && beforeSnap.getRowCount() != null ? beforeSnap.getRowCount() : 0;
             long afterCount = afterSnap != null && afterSnap.getRowCount() != null ? afterSnap.getRowCount() : 0;
 
-            // Calculate new rows based on MAX(ID) difference
-            long newRows = Math.max(0, afterMaxId - beforeMaxId);
+            // Calculate new rows based on row count difference (handles AUTO_INCREMENT gaps after rollbacks)
+            // If afterCount > beforeCount, new rows were inserted
+            // Also check MAX(ID) to handle mixed insert/delete scenarios
+            long countBasedNewRows = Math.max(0, afterCount - beforeCount);
+            long idBasedNewRows = Math.max(0, afterMaxId - beforeMaxId);
+
+            // Use the smaller value to avoid false positives from AUTO_INCREMENT gaps
+            // But if full row data is available, use count-based calculation
+            long newRows;
+            if (beforeSnap != null && afterSnap != null && beforeSnap.hasRowData() && afterSnap.hasRowData()) {
+                // With full row data, count-based is more accurate
+                newRows = countBasedNewRows;
+            } else {
+                // Without full row data, use the smaller of count vs ID difference
+                newRows = Math.min(countBasedNewRows, idBasedNewRows);
+            }
             diff.setNewRowCount(table, newRows);
 
             // Calculate deleted rows based on count difference
-            // deletedRows = beforeCount + newRows - afterCount
-            long deletedRows = Math.max(0, beforeCount + newRows - afterCount);
+            long deletedRows = Math.max(0, beforeCount - afterCount + newRows);
             diff.setDeletedRowCount(table, deletedRows);
 
             // Fetch actual new row data if there are new rows
