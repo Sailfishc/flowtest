@@ -17,6 +17,12 @@ public class SnapshotDiff {
     /** Actual data of new rows per table */
     private final Map<String, List<Map<String, Object>>> newRowsData = new LinkedHashMap<>();
 
+    /** Number of modified rows per table */
+    private final Map<String, Long> modifiedRowCounts = new LinkedHashMap<>();
+
+    /** Modified row data per table (before/after pairs) */
+    private final Map<String, List<RowModification>> modifiedRowsData = new LinkedHashMap<>();
+
     private String normalize(String tableName) {
         return tableName == null ? null : tableName.toLowerCase();
     }
@@ -53,7 +59,9 @@ public class SnapshotDiff {
      * Checks if a table has any changes.
      */
     public boolean hasChanges(String tableName) {
-        return getNewRowCount(tableName) > 0 || getDeletedRowCount(tableName) > 0;
+        return getNewRowCount(tableName) > 0
+            || getDeletedRowCount(tableName) > 0
+            || getModifiedRowCount(tableName) > 0;
     }
 
     /**
@@ -71,6 +79,34 @@ public class SnapshotDiff {
     }
 
     /**
+     * Gets the number of modified rows for a table.
+     */
+    public long getModifiedRowCount(String tableName) {
+        return modifiedRowCounts.getOrDefault(normalize(tableName), 0L);
+    }
+
+    /**
+     * Sets the number of modified rows for a table.
+     */
+    public void setModifiedRowCount(String tableName, long count) {
+        modifiedRowCounts.put(normalize(tableName), count);
+    }
+
+    /**
+     * Gets the modified row data for a table.
+     */
+    public List<RowModification> getModifiedRowsData(String tableName) {
+        return modifiedRowsData.getOrDefault(normalize(tableName), Collections.emptyList());
+    }
+
+    /**
+     * Sets the modified row data for a table.
+     */
+    public void setModifiedRowsData(String tableName, List<RowModification> data) {
+        modifiedRowsData.put(normalize(tableName), data);
+    }
+
+    /**
      * Gets all table names that have changes.
      */
     public Set<String> getChangedTables() {
@@ -85,6 +121,11 @@ public class SnapshotDiff {
                 changed.add(table);
             }
         }
+        for (String table : modifiedRowCounts.keySet()) {
+            if (hasChanges(table)) {
+                changed.add(table);
+            }
+        }
         return changed;
     }
 
@@ -95,6 +136,7 @@ public class SnapshotDiff {
             sb.append("  ").append(table)
               .append(": +").append(getNewRowCount(table))
               .append(" -").append(getDeletedRowCount(table))
+              .append(" ~").append(getModifiedRowCount(table))
               .append("\n");
         }
         sb.append("}");

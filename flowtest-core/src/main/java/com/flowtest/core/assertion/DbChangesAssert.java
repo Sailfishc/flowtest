@@ -1,5 +1,6 @@
 package com.flowtest.core.assertion;
 
+import com.flowtest.core.snapshot.RowModification;
 import com.flowtest.core.snapshot.SnapshotDiff;
 
 import java.util.ArrayList;
@@ -56,8 +57,10 @@ public class DbChangesAssert {
 
         private Long expectedNewRows;
         private Long expectedDeletedRows;
+        private Long expectedModifiedRows;
         private boolean expectNoChanges = false;
         private final List<RowAssert> rowAsserts = new ArrayList<>();
+        private final List<ModifiedRowAssert> modifiedRowAsserts = new ArrayList<>();
 
         public TableAssert(DbChangesAssert parent, String tableName, SnapshotDiff diff) {
             this.parent = parent;
@@ -96,6 +99,21 @@ public class DbChangesAssert {
         }
 
         /**
+         * Asserts that the table has exactly N modified rows.
+         */
+        public TableAssert hasModifiedRows(long count) {
+            this.expectedModifiedRows = count;
+            return this;
+        }
+
+        /**
+         * Asserts that the table has at least one modified row.
+         */
+        public TableAssert hasModifiedRows() {
+            return hasModifiedRows(1);
+        }
+
+        /**
          * Asserts that the table has no changes (no inserts, updates, or deletes).
          */
         public TableAssert hasNoChanges() {
@@ -109,6 +127,24 @@ public class DbChangesAssert {
         public RowAssert row(int index) {
             RowAssert rowAssert = new RowAssert(this, index);
             rowAsserts.add(rowAssert);
+            return rowAssert;
+        }
+
+        /**
+         * Starts assertions on a modified row by index.
+         */
+        public ModifiedRowAssert modifiedRow(int index) {
+            ModifiedRowAssert rowAssert = new ModifiedRowAssert(this, index);
+            modifiedRowAsserts.add(rowAssert);
+            return rowAssert;
+        }
+
+        /**
+         * Starts assertions on a modified row by primary key value.
+         */
+        public ModifiedRowAssert modifiedRowWithId(Object primaryKeyValue) {
+            ModifiedRowAssert rowAssert = new ModifiedRowAssert(this, primaryKeyValue);
+            modifiedRowAsserts.add(rowAssert);
             return rowAssert;
         }
 
@@ -127,12 +163,13 @@ public class DbChangesAssert {
 
             long actualNewRows = diff.getNewRowCount(tableName);
             long actualDeletedRows = diff.getDeletedRowCount(tableName);
+            long actualModifiedRows = diff.getModifiedRowCount(tableName);
 
             if (expectNoChanges) {
-                if (actualNewRows > 0 || actualDeletedRows > 0) {
+                if (actualNewRows > 0 || actualDeletedRows > 0 || actualModifiedRows > 0) {
                     failures.add(String.format(
-                        "Table '%s': expected no changes, but found %d new rows and %d deleted rows",
-                        tableName, actualNewRows, actualDeletedRows));
+                        "Table '%s': expected no changes, but found %d new, %d deleted, %d modified rows",
+                        tableName, actualNewRows, actualDeletedRows, actualModifiedRows));
                 }
             }
 
@@ -148,8 +185,19 @@ public class DbChangesAssert {
                     tableName, expectedDeletedRows, actualDeletedRows));
             }
 
+            if (expectedModifiedRows != null && actualModifiedRows != expectedModifiedRows) {
+                failures.add(String.format(
+                    "Table '%s': expected %d modified rows, but found %d",
+                    tableName, expectedModifiedRows, actualModifiedRows));
+            }
+
             // Validate row assertions
             for (RowAssert rowAssert : rowAsserts) {
+                failures.addAll(rowAssert.validate());
+            }
+
+            // Validate modified row assertions
+            for (ModifiedRowAssert rowAssert : modifiedRowAsserts) {
                 failures.addAll(rowAssert.validate());
             }
 
@@ -321,6 +369,217 @@ public class DbChangesAssert {
             }
 
             // String comparison
+            return expected.toString().equals(actual.toString());
+        }
+    }
+
+    /**
+     * Modified row assertion builder.
+     */
+    public static class ModifiedRowAssert {
+
+        private final TableAssert parent;
+        private final Integer rowIndex;
+        private final Object primaryKeyValue;
+        private final List<ColumnChangeAssert> columnAsserts = new ArrayList<>();
+
+        public ModifiedRowAssert(TableAssert parent, int rowIndex) {
+            this.parent = parent;
+            this.rowIndex = rowIndex;
+            this.primaryKeyValue = null;
+        }
+
+        public ModifiedRowAssert(TableAssert parent, Object primaryKeyValue) {
+            this.parent = parent;
+            this.rowIndex = null;
+            this.primaryKeyValue = primaryKeyValue;
+        }
+
+        /**
+         * Starts a column change assertion.
+         */
+        public ColumnChangeAssert column(String columnName) {
+            ColumnChangeAssert columnAssert = new ColumnChangeAssert(this, columnName);
+            columnAsserts.add(columnAssert);
+            return columnAssert;
+        }
+
+        /**
+         * Asserts that a specific column was modified.
+         */
+        public ModifiedRowAssert hasChangedColumn(String columnName) {
+            ColumnChangeAssert columnAssert = new ColumnChangeAssert(this, columnName);
+            columnAssert.wasModified();
+            columnAsserts.add(columnAssert);
+            return this;
+        }
+
+        /**
+         * Asserts that a specific column was NOT modified.
+         */
+        public ModifiedRowAssert hasUnchangedColumn(String columnName) {
+            ColumnChangeAssert columnAssert = new ColumnChangeAssert(this, columnName);
+            columnAssert.wasNotModified();
+            columnAsserts.add(columnAssert);
+            return this;
+        }
+
+        /**
+         * Returns to the parent table assert.
+         */
+        public TableAssert and() {
+            return parent;
+        }
+
+        /**
+         * Chains to another table assertion.
+         */
+        public TableAssert table(String tableName) {
+            return parent.table(tableName);
+        }
+
+        List<String> validate() {
+            List<String> failures = new ArrayList<>();
+            RowModification modification = findModification();
+
+            if (modification == null) {
+                if (rowIndex != null) {
+                    failures.add(String.format(
+                        "Table '%s': no modified row at index %d",
+                        parent.tableName, rowIndex));
+                } else {
+                    failures.add(String.format(
+                        "Table '%s': no modified row with primary key %s",
+                        parent.tableName, primaryKeyValue));
+                }
+                return failures;
+            }
+
+            for (ColumnChangeAssert columnAssert : columnAsserts) {
+                String failure = columnAssert.validate(modification, parent.tableName);
+                if (failure != null) {
+                    failures.add(failure);
+                }
+            }
+            return failures;
+        }
+
+        private RowModification findModification() {
+            List<RowModification> modifications = parent.diff.getModifiedRowsData(parent.tableName);
+            if (rowIndex != null) {
+                if (rowIndex >= modifications.size()) {
+                    return null;
+                }
+                return modifications.get(rowIndex);
+            } else {
+                for (RowModification mod : modifications) {
+                    if (primaryKeyValue.equals(mod.getPrimaryKeyValue())) {
+                        return mod;
+                    }
+                }
+                return null;
+            }
+        }
+    }
+
+    /**
+     * Column change assertion builder for modified rows.
+     */
+    public static class ColumnChangeAssert {
+
+        private final ModifiedRowAssert parent;
+        private final String columnName;
+        private Object expectedBeforeValue;
+        private Object expectedAfterValue;
+        private boolean checkWasModified = false;
+        private boolean expectModified = true;
+
+        public ColumnChangeAssert(ModifiedRowAssert parent, String columnName) {
+            this.parent = parent;
+            this.columnName = columnName;
+        }
+
+        /**
+         * Asserts the before value of the column.
+         */
+        public ColumnChangeAssert changedFrom(Object expectedBefore) {
+            this.expectedBeforeValue = expectedBefore;
+            return this;
+        }
+
+        /**
+         * Asserts the after value of the column.
+         */
+        public ModifiedRowAssert to(Object expectedAfter) {
+            this.expectedAfterValue = expectedAfter;
+            return parent;
+        }
+
+        /**
+         * Asserts only the after value.
+         */
+        public ModifiedRowAssert changedTo(Object expectedAfter) {
+            this.expectedAfterValue = expectedAfter;
+            return parent;
+        }
+
+        /**
+         * Asserts that the column was modified.
+         */
+        public ModifiedRowAssert wasModified() {
+            this.checkWasModified = true;
+            this.expectModified = true;
+            return parent;
+        }
+
+        /**
+         * Asserts that the column was NOT modified.
+         */
+        public ModifiedRowAssert wasNotModified() {
+            this.checkWasModified = true;
+            this.expectModified = false;
+            return parent;
+        }
+
+        String validate(RowModification modification, String tableName) {
+            Object actualBefore = modification.getBeforeValue(columnName);
+            Object actualAfter = modification.getAfterValue(columnName);
+            boolean wasActuallyModified = modification.isColumnModified(columnName);
+
+            if (checkWasModified) {
+                if (expectModified && !wasActuallyModified) {
+                    return String.format(
+                        "Table '%s' column '%s': expected modified, but unchanged (value: %s)",
+                        tableName, columnName, actualBefore);
+                }
+                if (!expectModified && wasActuallyModified) {
+                    return String.format(
+                        "Table '%s' column '%s': expected unchanged, but modified from '%s' to '%s'",
+                        tableName, columnName, actualBefore, actualAfter);
+                }
+            }
+
+            if (expectedBeforeValue != null && !valuesEqual(expectedBeforeValue, actualBefore)) {
+                return String.format(
+                    "Table '%s' column '%s': expected before '%s', but was '%s'",
+                    tableName, columnName, expectedBeforeValue, actualBefore);
+            }
+
+            if (expectedAfterValue != null && !valuesEqual(expectedAfterValue, actualAfter)) {
+                return String.format(
+                    "Table '%s' column '%s': expected after '%s', but was '%s'",
+                    tableName, columnName, expectedAfterValue, actualAfter);
+            }
+
+            return null;
+        }
+
+        private boolean valuesEqual(Object expected, Object actual) {
+            if (expected == null && actual == null) return true;
+            if (expected == null || actual == null) return false;
+            if (expected instanceof Number && actual instanceof Number) {
+                return ((Number) expected).doubleValue() == ((Number) actual).doubleValue();
+            }
             return expected.toString().equals(actual.toString());
         }
     }
