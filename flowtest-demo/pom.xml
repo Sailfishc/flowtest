@@ -42,6 +42,11 @@
             <artifactId>flowtest-spring-boot-starter</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.flowtest</groupId>
+            <artifactId>flowtest-assertj-db</artifactId>
+            <scope>test</scope>
+        </dependency>
 
         <!-- Spring Boot Test -->
         <dependency>

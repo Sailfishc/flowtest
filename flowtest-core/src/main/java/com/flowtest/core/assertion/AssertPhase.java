@@ -60,9 +60,14 @@ public class AssertPhase<T> {
         }
 
         // Take before snapshot
-        if (snapshotEngine != null && !context.getWatchedTables().isEmpty()) {
-            Map<String, TableSnapshot> beforeSnapshot = snapshotEngine.takeBeforeSnapshot(context.getWatchedTables());
-            context.setBeforeSnapshot(beforeSnapshot);
+        if (snapshotEngine != null) {
+            for (String table : snapshotEngine.listTableNames()) {
+                context.addWatchedTable(table);
+            }
+            if (!context.getWatchedTables().isEmpty()) {
+                Map<String, TableSnapshot> beforeSnapshot = snapshotEngine.takeBeforeSnapshot(context.getWatchedTables());
+                context.setBeforeSnapshot(beforeSnapshot);
+            }
         }
 
         // Execute the action

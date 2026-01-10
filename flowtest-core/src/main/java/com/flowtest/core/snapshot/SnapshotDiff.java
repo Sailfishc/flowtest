@@ -17,32 +17,36 @@ public class SnapshotDiff {
     /** Actual data of new rows per table */
     private final Map<String, List<Map<String, Object>>> newRowsData = new LinkedHashMap<>();
 
+    private String normalize(String tableName) {
+        return tableName == null ? null : tableName.toLowerCase();
+    }
+
     /**
      * Gets the number of new rows for a table.
      */
     public long getNewRowCount(String tableName) {
-        return newRowCounts.getOrDefault(tableName, 0L);
+        return newRowCounts.getOrDefault(normalize(tableName), 0L);
     }
 
     /**
      * Sets the number of new rows for a table.
      */
     public void setNewRowCount(String tableName, long count) {
-        newRowCounts.put(tableName, count);
+        newRowCounts.put(normalize(tableName), count);
     }
 
     /**
      * Gets the number of deleted rows for a table.
      */
     public long getDeletedRowCount(String tableName) {
-        return deletedRowCounts.getOrDefault(tableName, 0L);
+        return deletedRowCounts.getOrDefault(normalize(tableName), 0L);
     }
 
     /**
      * Sets the number of deleted rows for a table.
      */
     public void setDeletedRowCount(String tableName, long count) {
-        deletedRowCounts.put(tableName, count);
+        deletedRowCounts.put(normalize(tableName), count);
     }
 
     /**
@@ -56,14 +60,14 @@ public class SnapshotDiff {
      * Gets the actual data of new rows for a table.
      */
     public List<Map<String, Object>> getNewRowsData(String tableName) {
-        return newRowsData.getOrDefault(tableName, Collections.emptyList());
+        return newRowsData.getOrDefault(normalize(tableName), Collections.emptyList());
     }
 
     /**
      * Sets the actual data of new rows for a table.
      */
     public void setNewRowsData(String tableName, List<Map<String, Object>> data) {
-        newRowsData.put(tableName, data);
+        newRowsData.put(normalize(tableName), data);
     }
 
     /**

@@ -109,7 +109,22 @@ public class OrderService {
             return ps;
         }, keyHolder);
 
-        order.setId(keyHolder.getKey().longValue());
+        Number generatedId = null;
+        if (keyHolder.getKeys() != null && !keyHolder.getKeys().isEmpty()) {
+            Object idValue = keyHolder.getKeys().get("ID");
+            if (idValue == null) {
+                idValue = keyHolder.getKeys().get("id");
+            }
+            if (idValue instanceof Number) {
+                generatedId = (Number) idValue;
+            }
+        }
+        if (generatedId == null && keyHolder.getKey() != null) {
+            generatedId = keyHolder.getKey();
+        }
+        if (generatedId != null) {
+            order.setId(generatedId.longValue());
+        }
 
         return order;
     }

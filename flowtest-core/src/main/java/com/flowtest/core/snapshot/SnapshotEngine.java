@@ -5,6 +5,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
 import java.util.*;
 
 /**
@@ -32,6 +35,33 @@ public class SnapshotEngine {
      */
     public void setIdColumnName(String idColumnName) {
         this.idColumnName = idColumnName;
+    }
+
+    /**
+     * Lists all user table names in the current database.
+     */
+    public Set<String> listTableNames() {
+        DataSource dataSource = jdbcTemplate.getDataSource();
+        if (dataSource == null) {
+            return Collections.emptySet();
+        }
+
+        Set<String> tables = new LinkedHashSet<>();
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metaData = connection.getMetaData();
+            try (ResultSet rs = metaData.getTables(connection.getCatalog(), null, "%", new String[] {"TABLE"})) {
+                while (rs.next()) {
+                    String name = rs.getString("TABLE_NAME");
+                    if (name != null && !name.isEmpty()) {
+                        tables.add(name);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Failed to list tables: {}", e.getMessage());
+        }
+
+        return tables;
     }
 
     /**

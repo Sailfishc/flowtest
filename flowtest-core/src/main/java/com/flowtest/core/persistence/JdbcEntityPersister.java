@@ -4,11 +4,10 @@ import com.flowtest.core.fixture.EntityMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
-
 import javax.sql.DataSource;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -48,23 +47,33 @@ public class JdbcEntityPersister implements EntityPersister {
         String sql = buildInsertSql(metadata.getTableName(), columns);
         log.debug("Executing INSERT: {} with values: {}", sql, values);
 
-        KeyHolder keyHolder = new GeneratedKeyHolder();
+        Number generatedId = jdbcTemplate.execute((Connection connection) -> {
+            try (PreparedStatement ps = connection.prepareStatement(
+                sql,
+                new String[] { metadata.getIdColumnName() }
+            )) {
+                for (int i = 0; i < values.size(); i++) {
+                    ps.setObject(i + 1, convertValue(values.get(i)));
+                }
+                ps.executeUpdate();
 
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
-            for (int i = 0; i < values.size(); i++) {
-                ps.setObject(i + 1, values.get(i));
+                try (ResultSet rs = ps.getGeneratedKeys()) {
+                    if (rs != null && rs.next()) {
+                        Object key = rs.getObject(1);
+                        if (key instanceof Number) {
+                            return (Number) key;
+                        }
+                    }
+                }
+
+                return fetchGeneratedKeyFallback(connection);
             }
-            return ps;
-        }, keyHolder);
+        });
 
-        // Get the generated key
-        Number generatedKey = keyHolder.getKey();
-        if (generatedKey != null) {
-            // Set the ID back on the entity
-            metadata.setId(entity, generatedKey);
-            log.debug("Generated ID: {}", generatedKey);
-            return generatedKey;
+        if (generatedId != null) {
+            metadata.setId(entity, generatedId);
+            log.debug("Generated ID: {}", generatedId);
+            return generatedId;
         }
 
         // If no key was generated, return the existing ID
@@ -141,6 +150,51 @@ public class JdbcEntityPersister implements EntityPersister {
      */
     private EntityMetadata getMetadata(Class<?> entityClass) {
         return metadataCache.computeIfAbsent(entityClass, EntityMetadata::new);
+    }
+
+    /**
+     * Converts a value to a JDBC-compatible type.
+     */
+    private Object convertValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        // Convert enums to their name
+        if (value instanceof Enum) {
+            return ((Enum<?>) value).name();
+        }
+        // Convert LocalDateTime to Timestamp
+        if (value instanceof java.time.LocalDateTime) {
+            return java.sql.Timestamp.valueOf((java.time.LocalDateTime) value);
+        }
+        // Convert LocalDate to Date
+        if (value instanceof java.time.LocalDate) {
+            return java.sql.Date.valueOf((java.time.LocalDate) value);
+        }
+        return value;
+    }
+
+    private Number fetchGeneratedKeyFallback(Connection connection) {
+        String[] sqls = {
+            "SELECT IDENTITY()",
+            "SELECT SCOPE_IDENTITY()",
+            "SELECT LAST_INSERT_ID()",
+            "SELECT lastval()"
+        };
+        for (String sql : sqls) {
+            try (Statement stmt = connection.createStatement();
+                 ResultSet rs = stmt.executeQuery(sql)) {
+                if (rs.next()) {
+                    Object value = rs.getObject(1);
+                    if (value instanceof Number) {
+                        return (Number) value;
+                    }
+                }
+            } catch (Exception ignored) {
+                // Try next fallback
+            }
+        }
+        return null;
     }
 
     /**
