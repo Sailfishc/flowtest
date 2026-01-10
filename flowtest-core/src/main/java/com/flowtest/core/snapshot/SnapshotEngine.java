@@ -71,8 +71,13 @@ public class SnapshotEngine {
         Set<String> tables = new LinkedHashSet<>();
         try (Connection connection = dataSource.getConnection()) {
             DatabaseMetaData metaData = connection.getMetaData();
-            try (ResultSet rs = metaData.getTables(connection.getCatalog(), null, "%", new String[] {"TABLE"})) {
+            String schema = connection.getSchema();
+            try (ResultSet rs = metaData.getTables(connection.getCatalog(), schema, "%", new String[] {"TABLE"})) {
                 while (rs.next()) {
+                    String tableSchema = rs.getString("TABLE_SCHEM");
+                    if (isSystemSchema(tableSchema, schema)) {
+                        continue;
+                    }
                     String name = rs.getString("TABLE_NAME");
                     if (name != null && !name.isEmpty()) {
                         tables.add(name);
@@ -336,5 +341,21 @@ public class SnapshotEngine {
             }
         }
         return null;
+    }
+
+    private boolean isSystemSchema(String tableSchema, String activeSchema) {
+        if (tableSchema == null || tableSchema.isEmpty()) {
+            return false;
+        }
+        if (activeSchema != null && tableSchema.equalsIgnoreCase(activeSchema)) {
+            return false;
+        }
+        String schema = tableSchema.toUpperCase(Locale.ROOT);
+        return schema.equals("INFORMATION_SCHEMA")
+            || schema.equals("PG_CATALOG")
+            || schema.equals("MYSQL")
+            || schema.equals("SYS")
+            || schema.equals("SYSTEM")
+            || schema.equals("PERFORMANCE_SCHEMA");
     }
 }

@@ -231,4 +231,77 @@ class OrderServiceTest {
             assertThat(flow.get(User.class, 2)).isNotNull();
         }
     }
+
+    @Nested
+    @DisplayName("场景: 修改检测")
+    class ModificationDetection {
+
+        @Test
+        @DisplayName("创建订单时检测用户余额修改")
+        void testUserBalanceModified() {
+            flow.arrange()
+                    .add(User.class, UserTraits.normal(), UserTraits.balance(1000.00))
+                    .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+                    .dbChanges(db -> db
+                        .table("t_order").hasNewRows(1)
+                        .table("t_user").hasModifiedRows(1)
+                            .modifiedRow(0)
+                                .column("balance").changedFrom(1000.00).to(800.00)
+                    );
+        }
+
+        @Test
+        @DisplayName("VIP用户创建订单时检测余额修改(含折扣)")
+        void testVipUserBalanceModified() {
+            flow.arrange()
+                    .add(User.class, UserTraits.vip(), UserTraits.balance(1000.00))
+                    .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+                    .dbChanges(db -> db
+                        .table("t_order").hasNewRows(1)
+                        .table("t_user").hasModifiedRows(1)
+                            .modifiedRow(0)
+                                // 200 * 0.9 = 180, 1000 - 180 = 820
+                                .column("balance").changedFrom(1000.00).to(820.00)
+                    );
+        }
+
+        @Test
+        @DisplayName("余额不足时无修改")
+        void testNoModificationOnInsufficientBalance() {
+            flow.arrange()
+                    .add(User.class, UserTraits.normal(), UserTraits.balance(10.00))
+                    .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        1))
+
+                .assertThat()
+                    .exception(InsufficientBalanceException.class)
+                    .dbChanges(db -> db
+                        .table("t_order").hasNoChanges()
+                        .table("t_user").hasNoChanges()
+                    );
+        }
+    }
 }

@@ -2,6 +2,7 @@ package com.flowtest.core;
 
 import com.flowtest.core.fixture.ArrangeBuilder;
 import com.flowtest.core.fixture.AutoFiller;
+import com.flowtest.core.lifecycle.SnapshotBasedCleanup;
 import com.flowtest.core.persistence.EntityPersister;
 import com.flowtest.core.snapshot.SnapshotEngine;
 
@@ -192,5 +193,24 @@ public class TestFlow {
      */
     public void setSnapshotEngine(SnapshotEngine snapshotEngine) {
         this.snapshotEngine = snapshotEngine;
+    }
+
+    /**
+     * Manually triggers cleanup of all test data.
+     * This includes both persist() phase data and act() phase data.
+     *
+     * <p>Use this when you need to clean up data before the test ends,
+     * or when not using automatic cleanup modes.
+     */
+    public void cleanup() {
+        TestContext context = contextHolder.get();
+        if (context == null) {
+            return;
+        }
+
+        if (snapshotEngine != null && persister != null) {
+            SnapshotBasedCleanup cleanup = new SnapshotBasedCleanup(snapshotEngine, persister);
+            cleanup.afterTest(context);
+        }
     }
 }

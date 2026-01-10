@@ -6,6 +6,7 @@ import com.flowtest.core.lifecycle.CleanupMode;
 import com.flowtest.core.lifecycle.CleanupStrategy;
 import com.flowtest.core.lifecycle.CompensatingCleanup;
 import com.flowtest.core.lifecycle.NoOpCleanup;
+import com.flowtest.core.lifecycle.SnapshotBasedCleanup;
 import com.flowtest.core.lifecycle.TransactionalCleanup;
 import org.junit.jupiter.api.extension.*;
 import org.slf4j.Logger;
@@ -144,6 +145,13 @@ public class FlowTestExtension implements BeforeEachCallback, AfterEachCallback 
      */
     private CleanupStrategy createCleanupStrategy(CleanupMode mode, TestFlow flow) {
         switch (mode) {
+            case SNAPSHOT_BASED:
+                if (flow != null && flow.getPersister() != null && flow.getSnapshotEngine() != null) {
+                    return new SnapshotBasedCleanup(flow.getSnapshotEngine(), flow.getPersister());
+                }
+                log.warn("SNAPSHOT_BASED cleanup requires TestFlow with SnapshotEngine. Falling back to COMPENSATING.");
+                // Fall through to COMPENSATING
+
             case COMPENSATING:
                 if (flow != null && flow.getPersister() != null) {
                     return new CompensatingCleanup(flow.getPersister());

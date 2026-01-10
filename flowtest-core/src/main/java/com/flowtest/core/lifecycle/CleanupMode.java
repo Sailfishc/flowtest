@@ -21,6 +21,15 @@ public enum CleanupMode {
     COMPENSATING,
 
     /**
+     * Snapshot-based cleanup (L3).
+     * Deletes all data created during persist() and act() phases.
+     * Uses MAX(ID) snapshots to detect new rows created by business logic.
+     * Use when transaction rollback is not available and you need to clean
+     * both test fixtures and data produced by the system under test.
+     */
+    SNAPSHOT_BASED,
+
+    /**
      * No cleanup.
      * Data remains in the database after the test.
      * Useful for debugging or manual inspection.
