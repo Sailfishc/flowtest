@@ -1,6 +1,8 @@
 package com.example.demo.entity;
 
 import javax.persistence.Table;
+import javax.persistence.Enumerated;
+import javax.persistence.EnumType;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
@@ -14,7 +16,9 @@ public class User {
     private String username;
     private String email;
     private BigDecimal balance;
+    @Enumerated(EnumType.STRING)
     private UserLevel level;
+    @Enumerated(EnumType.STRING)
     private UserStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

@@ -95,3 +95,41 @@ class MyServiceTest {
     @Autowired MyService service;
 }
 ```
+
+## Common Issues & Lessons Learned
+
+### 1. H2 Database Reserved Words
+
+**Problem**: `user` and `order` are reserved words in H2, causing SQL syntax errors.
+
+**Solution**: Use `t_` prefix for table names: `t_user`, `t_order`, `t_product`.
+
+### 2. Enum Persistence in JDBC
+
+**Problem**: JDBC `setObject()` serializes Java enums as binary objects, causing `Data conversion error`.
+
+**Solution**: Convert enums to `String` using `.name()` before inserting.
+
+### 3. H2 KeyHolder Returns Multiple Keys
+
+**Problem**: H2's `GeneratedKeyHolder.getKey()` may throw exception when multiple columns are returned.
+
+**Solution**: Use `getKeys()` and search for the ID column by name.
+
+### 4. Package-Private Methods Across Packages
+
+**Problem**: `TestContext` internal methods were package-private but accessed from other packages.
+
+**Solution**: Make methods `public` when they need cross-package access.
+
+### 5. AssertJ-DB Table API
+
+**Problem**: `Changes.setTables(String...)` doesn't exist; it requires `Table[]`.
+
+**Solution**: Convert table names to `Table` objects first.
+
+### 6. LocalDateTime JDBC Conversion
+
+**Problem**: `LocalDateTime` not directly supported by all JDBC drivers.
+
+**Solution**: Convert to `java.sql.Timestamp` before inserting.
