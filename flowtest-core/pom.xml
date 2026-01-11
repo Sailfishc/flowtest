@@ -23,6 +23,13 @@
             <artifactId>easy-random-core</artifactId>
         </dependency>
 
+        <!-- Instancio for auto-filling (optional alternative) -->
+        <dependency>
+            <groupId>org.instancio</groupId>
+            <artifactId>instancio-core</artifactId>
+            <optional>true</optional>
+        </dependency>
+
         <!-- Spring JDBC (provided) -->
         <dependency>
             <groupId>org.springframework</groupId>

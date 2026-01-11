@@ -31,6 +31,12 @@
             <artifactId>flowtest-assertj-db</artifactId>
         </dependency>
 
+        <!-- Instancio for auto-filling (optional) -->
+        <dependency>
+            <groupId>org.instancio</groupId>
+            <artifactId>instancio-core</artifactId>
+        </dependency>
+
         <!-- Spring Boot -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

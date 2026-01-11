@@ -1,7 +1,7 @@
 package com.flowtest.core;
 
 import com.flowtest.core.fixture.ArrangeBuilder;
-import com.flowtest.core.fixture.AutoFiller;
+import com.flowtest.core.fixture.DataFiller;
 import com.flowtest.core.lifecycle.SnapshotBasedCleanup;
 import com.flowtest.core.persistence.EntityPersister;
 import com.flowtest.core.snapshot.SnapshotEngine;
@@ -44,20 +44,20 @@ import java.util.List;
 public class TestFlow {
 
     private final EntityPersister persister;
-    private final AutoFiller autoFiller;
+    private final DataFiller dataFiller;
     private SnapshotEngine snapshotEngine;
 
     /** Thread-local context for the current test */
     private final ThreadLocal<TestContext> contextHolder = new ThreadLocal<>();
 
-    public TestFlow(EntityPersister persister, AutoFiller autoFiller) {
+    public TestFlow(EntityPersister persister, DataFiller dataFiller) {
         this.persister = persister;
-        this.autoFiller = autoFiller;
+        this.dataFiller = dataFiller;
     }
 
-    public TestFlow(EntityPersister persister, AutoFiller autoFiller, SnapshotEngine snapshotEngine) {
+    public TestFlow(EntityPersister persister, DataFiller dataFiller, SnapshotEngine snapshotEngine) {
         this.persister = persister;
-        this.autoFiller = autoFiller;
+        this.dataFiller = dataFiller;
         this.snapshotEngine = snapshotEngine;
     }
 
@@ -68,7 +68,7 @@ public class TestFlow {
      */
     public ArrangeBuilder arrange() {
         TestContext context = getOrCreateContext();
-        return new ArrangeBuilder(context, persister, autoFiller, snapshotEngine);
+        return new ArrangeBuilder(context, persister, dataFiller, snapshotEngine);
     }
 
     /**
@@ -175,10 +175,10 @@ public class TestFlow {
     }
 
     /**
-     * Gets the auto filler.
+     * Gets the data filler.
      */
-    public AutoFiller getAutoFiller() {
-        return autoFiller;
+    public DataFiller getDataFiller() {
+        return dataFiller;
     }
 
     /**

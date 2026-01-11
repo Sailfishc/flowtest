@@ -69,6 +69,11 @@ public class FlowTestProperties {
      */
     private String idColumnName = "id";
 
+    /**
+     * Data filler type: "easyrandom" (default) or "instancio".
+     */
+    private String dataFiller = "easyrandom";
+
     // Getters and Setters
 
     public CleanupMode getCleanupMode() {
@@ -141,5 +146,13 @@ public class FlowTestProperties {
 
     public void setIdColumnName(String idColumnName) {
         this.idColumnName = idColumnName;
+    }
+
+    public String getDataFiller() {
+        return dataFiller;
+    }
+
+    public void setDataFiller(String dataFiller) {
+        this.dataFiller = dataFiller;
     }
 }

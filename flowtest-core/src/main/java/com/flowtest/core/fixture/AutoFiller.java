@@ -13,7 +13,7 @@ import java.util.function.Predicate;
  * Auto-fills entity fields using EasyRandom.
  * Excludes ID fields by default to allow database auto-generation.
  */
-public class AutoFiller {
+public class AutoFiller implements DataFiller {
 
     private final EasyRandom easyRandom;
 
@@ -80,6 +80,7 @@ public class AutoFiller {
      * @param <T> the entity type
      * @return a filled entity instance
      */
+    @Override
     public <T> T fill(Class<T> entityClass) {
         return easyRandom.nextObject(entityClass);
     }
@@ -91,6 +92,7 @@ public class AutoFiller {
      * @param <T> the entity type
      * @return the entity with null fields filled
      */
+    @Override
     public <T> T fillNulls(T entity) {
         if (entity == null) {
             return null;

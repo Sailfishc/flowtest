@@ -25,18 +25,18 @@ public class ArrangeBuilder {
 
     private final TestContext context;
     private final EntityPersister persister;
-    private final AutoFiller autoFiller;
+    private final DataFiller dataFiller;
     private final SnapshotEngine snapshotEngine;
     private final List<EntitySpec<?>> entitySpecs = new ArrayList<>();
 
-    public ArrangeBuilder(TestContext context, EntityPersister persister, AutoFiller autoFiller) {
-        this(context, persister, autoFiller, null);
+    public ArrangeBuilder(TestContext context, EntityPersister persister, DataFiller dataFiller) {
+        this(context, persister, dataFiller, null);
     }
 
-    public ArrangeBuilder(TestContext context, EntityPersister persister, AutoFiller autoFiller, SnapshotEngine snapshotEngine) {
+    public ArrangeBuilder(TestContext context, EntityPersister persister, DataFiller dataFiller, SnapshotEngine snapshotEngine) {
         this.context = context;
         this.persister = persister;
-        this.autoFiller = autoFiller;
+        this.dataFiller = dataFiller;
         this.snapshotEngine = snapshotEngine;
     }
 
@@ -132,7 +132,7 @@ public class ArrangeBuilder {
 
     private <T> T buildEntity(EntitySpec<T> spec) {
         // Create entity with auto-filled values
-        T entity = autoFiller.fill(spec.getEntityClass());
+        T entity = dataFiller.fill(spec.getEntityClass());
 
         // Apply traits (overrides auto-filled values)
         spec.applyTraits(entity);
