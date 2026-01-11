@@ -136,9 +136,9 @@ public class TestFlow {
 
     /**
      * Gets or creates a test context.
-     * Used internally by ArrangeBuilder.
+     * Used internally by ArrangeBuilder and mock extensions.
      */
-    TestContext getOrCreateContext() {
+    public TestContext getOrCreateContext() {
         TestContext context = contextHolder.get();
         if (context == null) {
             context = new TestContext();

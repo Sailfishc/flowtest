@@ -16,6 +16,7 @@
         <module>flowtest-core</module>
         <module>flowtest-assertj-db</module>
         <module>flowtest-junit5</module>
+        <module>flowtest-mockito</module>
         <module>flowtest-spring-boot-starter</module>
         <module>flowtest-demo</module>
     </modules>
@@ -37,6 +38,7 @@
         <h2.version>2.2.224</h2.version>
         <slf4j.version>1.7.36</slf4j.version>
         <javax-persistence.version>2.2</javax-persistence.version>
+        <mockito.version>4.11.0</mockito.version>
     </properties>
 
     <dependencyManagement>
@@ -69,6 +71,11 @@
             <dependency>
                 <groupId>com.flowtest</groupId>
                 <artifactId>flowtest-spring-boot-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.flowtest</groupId>
+                <artifactId>flowtest-mockito</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
@@ -105,6 +112,13 @@
                 <groupId>com.h2database</groupId>
                 <artifactId>h2</artifactId>
                 <version>${h2.version}</version>
+            </dependency>
+
+            <!-- Mockito -->
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-core</artifactId>
+                <version>${mockito.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

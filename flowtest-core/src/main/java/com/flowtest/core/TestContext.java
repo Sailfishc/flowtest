@@ -41,6 +41,9 @@ public class TestContext {
     /** Cleanup snapshot: table name -> MAX(ID) before test (supports various ID types) */
     private Map<String, Object> cleanupSnapshot = new LinkedHashMap<>();
 
+    /** Mock context (optional, used when flowtest-mockito is on classpath) */
+    private Object mockContext;
+
     /**
      * Gets the first entity of the given type.
      *
@@ -192,6 +195,20 @@ public class TestContext {
     }
 
     /**
+     * Gets the mock context (if flowtest-mockito is used).
+     */
+    public Object getMockContext() {
+        return mockContext;
+    }
+
+    /**
+     * Sets the mock context.
+     */
+    public void setMockContext(Object mockContext) {
+        this.mockContext = mockContext;
+    }
+
+    /**
      * Clears all state in this context.
      */
     public void clear() {
@@ -205,5 +222,6 @@ public class TestContext {
         thrownException = null;
         actResult = null;
         cleanupSnapshot.clear();
+        mockContext = null;
     }
 }
