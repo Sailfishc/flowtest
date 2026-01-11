@@ -133,3 +133,64 @@ class MyServiceTest {
 **Problem**: `LocalDateTime` not directly supported by all JDBC drivers.
 
 **Solution**: Convert to `java.sql.Timestamp` before inserting.
+
+### 7. JUnit 5 @Nested Classes Cannot Find TestFlow
+
+**Problem**: `FlowTestExtension.findTestFlow()` searches fields in the test instance class, but for `@Nested` inner classes, the `TestFlow` field is defined in the outer class, not the nested class itself.
+
+**Solution**: Access the enclosing class instance via the synthetic `this$0` field that Java creates for non-static inner classes:
+
+```java
+private Object getEnclosingInstance(Object testInstance) {
+    Class<?> clazz = testInstance.getClass();
+    if (clazz.getEnclosingClass() == null) {
+        return null;
+    }
+    Field enclosingField = clazz.getDeclaredField("this$0");
+    enclosingField.setAccessible(true);
+    return enclosingField.get(testInstance);
+}
+```
+
+### 8. H2 AUTO_INCREMENT Not Reset After Rollback
+
+**Problem**: When using `@Transactional` tests, H2's AUTO_INCREMENT counter does not reset after transaction rollback. This causes `SnapshotEngine` to incorrectly calculate new rows when using `MAX(id)` difference.
+
+Example: Test A creates Order id=1, rollback. Test B's before snapshot has MAX(id)=null, creates Order id=2, after MAX(id)=2. Calculated newRows = 2 (wrong, should be 1).
+
+**Solution**: Use `COUNT(*)` difference instead of `MAX(id)` difference to calculate new rows:
+
+```java
+long countBasedNewRows = Math.max(0, afterCount - beforeCount);
+```
+
+### 9. @Transactional vs SNAPSHOT_BASED Cleanup Conflict
+
+**Problem**: Mixing `@Transactional` (auto-rollback) with `@FlowTest(cleanup = SNAPSHOT_BASED)` causes conflicts - both try to clean up data, and timing issues arise.
+
+**Solution**: Choose one cleanup strategy:
+- Use `@Transactional` for tests that can rely on rollback (most cases)
+- Use `SNAPSHOT_BASED` with `@Transactional(propagation = NOT_SUPPORTED)` for tests that need real commits (e.g., testing with `FlowTestChanges`)
+
+Never mix both in the same test.
+
+### 10. Non-Transactional Tests Pollute Shared H2 Database
+
+**Problem**: Tests with `@Transactional(propagation = NOT_SUPPORTED)` commit real data to H2. With `DB_CLOSE_DELAY=-1`, data persists across tests, causing pollution.
+
+**Solution**:
+1. Move non-transactional tests to separate `@Nested` classes
+2. Always use `try-finally` to ensure cleanup:
+
+```java
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+void testWithRealCommit() {
+    Long baseline = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM t_order", Long.class);
+    try {
+        // test logic
+    } finally {
+        jdbcTemplate.update("DELETE FROM t_order WHERE id > ?", baseline);
+        flow.cleanup();
+    }
+}
+```
