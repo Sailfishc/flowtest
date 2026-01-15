@@ -7,6 +7,8 @@ import com.flowtest.core.snapshot.SnapshotEngine;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
 
 /**
  * Builder for the Arrange phase of testing.
@@ -82,6 +84,73 @@ public class ArrangeBuilder {
     public final <T> ArrangeBuilder addMany(Class<T> entityClass, int count, Trait<T>... traits) {
         for (int i = 0; i < count; i++) {
             add(entityClass, traits);
+        }
+        return this;
+    }
+
+    // ==================== Lambda-style methods ====================
+
+    /**
+     * Adds an entity configured by a Consumer (Lambda-friendly).
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * flow.arrange()
+     *     .add(User.class, user -> {
+     *         user.setLevel(UserLevel.VIP);
+     *         user.setBalance(BigDecimal.valueOf(1000));
+     *     })
+     *     .persist();
+     * }</pre>
+     *
+     * @param entityClass the entity class
+     * @param configurer the consumer to configure the entity
+     * @param <T> the entity type
+     * @return this builder
+     */
+    public <T> ArrangeBuilder add(Class<T> entityClass, Consumer<T> configurer) {
+        entitySpecs.add(new EntitySpec<>(entityClass, null, entity -> configurer.accept(entity)));
+        return this;
+    }
+
+    /**
+     * Adds an entity with an alias, configured by a Consumer.
+     *
+     * @param alias the alias for later retrieval
+     * @param entityClass the entity class
+     * @param configurer the consumer to configure the entity
+     * @param <T> the entity type
+     * @return this builder
+     */
+    public <T> ArrangeBuilder add(String alias, Class<T> entityClass, Consumer<T> configurer) {
+        entitySpecs.add(new EntitySpec<>(entityClass, alias, entity -> configurer.accept(entity)));
+        return this;
+    }
+
+    /**
+     * Adds multiple entities with indexed configuration.
+     *
+     * <p>Example usage:
+     * <pre>{@code
+     * flow.arrange()
+     *     .addMany(User.class, 3, (user, index) -> {
+     *         user.setName("User" + index);
+     *         user.setBalance(BigDecimal.valueOf(100 * (index + 1)));
+     *     })
+     *     .persist();
+     * // Creates: User0(balance=100), User1(balance=200), User2(balance=300)
+     * }</pre>
+     *
+     * @param entityClass the entity class
+     * @param count number of entities to add
+     * @param configurer the consumer with index to configure each entity
+     * @param <T> the entity type
+     * @return this builder
+     */
+    public <T> ArrangeBuilder addMany(Class<T> entityClass, int count, BiConsumer<T, Integer> configurer) {
+        for (int i = 0; i < count; i++) {
+            final int index = i;
+            add(entityClass, entity -> configurer.accept(entity, index));
         }
         return this;
     }

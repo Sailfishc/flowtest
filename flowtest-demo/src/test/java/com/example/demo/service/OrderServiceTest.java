@@ -362,4 +362,122 @@ class OrderServiceTest {
             }
         }
     }
+
+    // ==================== 新 API 演示 ====================
+
+    @Nested
+    @DisplayName("场景: Lambda Trait (新 API)")
+    class LambdaTraitDemo {
+
+        @Test
+        @DisplayName("使用 Lambda 配置实体")
+        void testLambdaTrait() {
+            flow.arrange()
+                // 使用 Lambda 直接配置，无需预定义 Trait 类
+                .add(User.class, user -> {
+                    user.setLevel(User.UserLevel.VIP);
+                    user.setBalance(java.math.BigDecimal.valueOf(1000));
+                })
+                .add(Product.class, product -> {
+                    product.setPrice(java.math.BigDecimal.valueOf(100));
+                    product.setStock(10);
+                })
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+                    .returnValue(order -> {
+                        // VIP 9折: 200 * 0.9 = 180
+                        assertThat(order.getTotalAmount()).isEqualByComparingTo("180.00");
+                    });
+        }
+
+        @Test
+        @DisplayName("使用带索引的 Lambda 批量创建")
+        void testAddManyWithIndex() {
+            flow.arrange()
+                // 批量创建带索引配置
+                .addMany(User.class, 3, (user, index) -> {
+                    user.setUsername("user_" + index);
+                    user.setLevel(User.UserLevel.NORMAL);
+                    user.setBalance(java.math.BigDecimal.valueOf(100 * (index + 1)));
+                })
+                .persist();
+
+            // 验证索引化配置
+            assertThat(flow.getAll(User.class)).hasSize(3);
+            assertThat(flow.get(User.class, 0).getBalance()).isEqualByComparingTo("100");
+            assertThat(flow.get(User.class, 1).getBalance()).isEqualByComparingTo("200");
+            assertThat(flow.get(User.class, 2).getBalance()).isEqualByComparingTo("300");
+        }
+    }
+
+    @Nested
+    @DisplayName("场景: 快捷断言方法 (新 API)")
+    class ShortcutAssertionDemo {
+
+        @Test
+        @DisplayName("使用 created() 快捷断言")
+        void testCreatedShortcut() {
+            flow.arrange()
+                .add(User.class, UserTraits.normal(), UserTraits.balance(1000.00))
+                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+                    // 新 API: 自动推断表名
+                    .created(Order.class)        // 等价于 .dbChanges(db -> db.table("t_order").hasNewRows(1))
+                    .modified(User.class);       // 等价于 .dbChanges(db -> db.table("t_user").hasModifiedRows(1))
+        }
+
+        @Test
+        @DisplayName("使用 unchanged() 快捷断言")
+        void testUnchangedShortcut() {
+            flow.arrange()
+                .add(User.class, UserTraits.normal(), UserTraits.balance(10.00))
+                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        1))
+
+                .assertThat()
+                    .exception(InsufficientBalanceException.class)
+                    // 新 API: 快捷验证无变化
+                    .unchanged(Order.class)     // 等价于 .dbChanges(db -> db.table("t_order").hasNoChanges())
+                    .unchanged(User.class);
+        }
+
+        @Test
+        @DisplayName("使用 onlyChanged() 验证仅特定表变化")
+        void testOnlyChangedShortcut() {
+            flow.arrange()
+                .add(User.class, UserTraits.normal(), UserTraits.balance(1000.00))
+                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+                    // 新 API: 仅 Order 和 User 表有变化，Product 表无变化
+                    .onlyChanged(Order.class, User.class);
+        }
+    }
 }
