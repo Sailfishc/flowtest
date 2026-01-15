@@ -16,6 +16,7 @@
         <module>flowtest-core</module>
         <module>flowtest-assertj-db</module>
         <module>flowtest-junit5</module>
+        <module>flowtest-testng</module>
         <module>flowtest-mockito</module>
         <module>flowtest-spring-boot-starter</module>
         <module>flowtest-demo</module>
@@ -77,6 +78,18 @@
                 <groupId>com.flowtest</groupId>
                 <artifactId>flowtest-mockito</artifactId>
                 <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.flowtest</groupId>
+                <artifactId>flowtest-testng</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- TestNG -->
+            <dependency>
+                <groupId>org.testng</groupId>
+                <artifactId>testng</artifactId>
+                <version>6.14.3</version>
             </dependency>
 
             <!-- EasyRandom -->

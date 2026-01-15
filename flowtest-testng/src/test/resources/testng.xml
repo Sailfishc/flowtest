@@ -1,0 +1,8 @@
+<!DOCTYPE suite SYSTEM "https://testng.org/testng-1.0.dtd" >
+<suite name="FlowTest TestNG Suite">
+    <test name="FlowTest TestNG Tests">
+        <packages>
+            <package name="com.flowtest.testng"/>
+        </packages>
+    </test>
+</suite>

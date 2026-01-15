@@ -95,3 +95,6 @@ logs/
 *.log
 temp/
 tmp/
+/flowtest-spring-boot-starter/.factorypath
+/.serena/.gitignore
+/.serena/project.yml
