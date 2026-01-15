@@ -3,9 +3,12 @@ package com.flowtest.core.assertion;
 import com.flowtest.core.FlowTestException;
 import com.flowtest.core.TestContext;
 import com.flowtest.core.fixture.EntityMetadata;
+import com.flowtest.core.snapshot.RowModification;
 import com.flowtest.core.snapshot.SnapshotDiff;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -87,6 +90,236 @@ public class AssertBuilder<T> {
                 phase.getThrownException().getClass().getName(), phase.getThrownException());
         }
         return phase.getResult();
+    }
+
+    // ==================== Result assertion methods ====================
+
+    /**
+     * Returns a ResultAssert for fluent assertions on the act() return value.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * .assertThat()
+     *     .result()
+     *         .has(Order::getStatus, OrderStatus.CREATED)
+     *         .has(Order::getTotalAmount, BigDecimal.valueOf(180))
+     *     .and()
+     *     .created(Order.class);
+     * }</pre>
+     *
+     * @return ResultAssert for chaining assertions
+     */
+    public ResultAssert<T, T> result() {
+        if (!exceptionAsserted && phase.getThrownException() != null) {
+            throw new AssertionError("Cannot assert result when exception was thrown: " +
+                phase.getThrownException().getClass().getName(), phase.getThrownException());
+        }
+        return new ResultAssert<>(this, phase.getResult());
+    }
+
+    // ==================== Entity state assertion methods ====================
+
+    /**
+     * Returns an EntityStateAssert for the first arrange entity of the given type.
+     * The entity state is retrieved from the snapshot diff (no extra DB query).
+     *
+     * <p>Example:
+     * <pre>{@code
+     * .assertThat()
+     *     .entity(User.class)
+     *         .has(User::getBalance, BigDecimal.valueOf(800))
+     *     .and()
+     *     .created(Order.class);
+     * }</pre>
+     *
+     * @param entityClass the entity class
+     * @param <E> the entity type
+     * @return EntityStateAssert for chaining assertions
+     */
+    public <E> EntityStateAssert<E, T> entity(Class<E> entityClass) {
+        return entity(entityClass, 0);
+    }
+
+    /**
+     * Returns an EntityStateAssert for the arrange entity at the given index.
+     *
+     * @param entityClass the entity class
+     * @param index the index of the entity (0-based)
+     * @param <E> the entity type
+     * @return EntityStateAssert for chaining assertions
+     */
+    public <E> EntityStateAssert<E, T> entity(Class<E> entityClass, int index) {
+        Map<String, Object> rowData = findEntityRowData(entityClass, index);
+        return new EntityStateAssert<>(this, rowData, entityClass);
+    }
+
+    /**
+     * Returns an EntityStateAssert for the arrange entity with the given alias.
+     *
+     * @param alias the entity alias
+     * @param entityClass the entity class
+     * @param <E> the entity type
+     * @return EntityStateAssert for chaining assertions
+     */
+    public <E> EntityStateAssert<E, T> entity(String alias, Class<E> entityClass) {
+        Map<String, Object> rowData = findEntityRowDataByAlias(alias, entityClass);
+        return new EntityStateAssert<>(this, rowData, entityClass);
+    }
+
+    // ==================== New row assertion methods ====================
+
+    /**
+     * Returns a NewRowAssert for the first new row of the given entity type.
+     * The row data is retrieved from the snapshot diff (no extra DB query).
+     *
+     * <p>Example:
+     * <pre>{@code
+     * .assertThat()
+     *     .newRow(Order.class)
+     *         .has(Order::getStatus, OrderStatus.CREATED)
+     *         .has("total_amount", 180)
+     *     .and()
+     *     .modified(User.class);
+     * }</pre>
+     *
+     * @param entityClass the entity class
+     * @param <E> the entity type
+     * @return NewRowAssert for chaining assertions
+     */
+    public <E> NewRowAssert<E, T> newRow(Class<E> entityClass) {
+        return newRow(entityClass, 0);
+    }
+
+    /**
+     * Returns a NewRowAssert for the new row at the given index.
+     *
+     * @param entityClass the entity class
+     * @param index the index of the new row (0-based)
+     * @param <E> the entity type
+     * @return NewRowAssert for chaining assertions
+     */
+    public <E> NewRowAssert<E, T> newRow(Class<E> entityClass, int index) {
+        phase.computeSnapshotDiff();
+        SnapshotDiff diff = context.getSnapshotDiff();
+        if (diff == null) {
+            throw new FlowTestException("No snapshot diff available. " +
+                "Make sure SnapshotEngine is configured and tables are being watched.");
+        }
+
+        String tableName = resolveTableName(entityClass);
+        List<Map<String, Object>> newRows = diff.getNewRowsData(tableName);
+
+        if (newRows.isEmpty()) {
+            throw new AssertionError(String.format(
+                "No new rows found for %s (table: %s)", entityClass.getSimpleName(), tableName));
+        }
+
+        if (index >= newRows.size()) {
+            throw new AssertionError(String.format(
+                "New row index %d out of bounds for %s. Only %d new row(s) found.",
+                index, entityClass.getSimpleName(), newRows.size()));
+        }
+
+        return new NewRowAssert<>(this, newRows.get(index), entityClass, index);
+    }
+
+    // ==================== Helper methods for entity/newRow ====================
+
+    /**
+     * Finds the afterRow data for an entity at the given index.
+     */
+    private <E> Map<String, Object> findEntityRowData(Class<E> entityClass, int index) {
+        phase.computeSnapshotDiff();
+        SnapshotDiff diff = context.getSnapshotDiff();
+        if (diff == null) {
+            throw new FlowTestException("No snapshot diff available. " +
+                "Make sure SnapshotEngine is configured and tables are being watched.");
+        }
+
+        // Get the persisted ID for this entity
+        List<Object> ids = context.getPersistedIds().get(entityClass);
+        if (ids == null || ids.isEmpty()) {
+            throw new FlowTestException("No persisted ID found for " + entityClass.getSimpleName() +
+                ". Make sure the entity was added via arrange().add() and persisted.");
+        }
+
+        if (index >= ids.size()) {
+            throw new FlowTestException(String.format(
+                "Entity index %d out of bounds for %s. Only %d entity(ies) found.",
+                index, entityClass.getSimpleName(), ids.size()));
+        }
+
+        Object entityId = ids.get(index);
+        String tableName = resolveTableName(entityClass);
+
+        // Find the RowModification for this entity
+        List<RowModification> modifications = diff.getModifiedRowsData(tableName);
+        for (RowModification mod : modifications) {
+            if (idsEqual(mod.getPrimaryKeyValue(), entityId)) {
+                return mod.getAfterRow();
+            }
+        }
+
+        // Entity was not modified during act() - return null and let EntityStateAssert handle it
+        return null;
+    }
+
+    /**
+     * Finds the afterRow data for an entity by alias.
+     */
+    private <E> Map<String, Object> findEntityRowDataByAlias(String alias, Class<E> entityClass) {
+        phase.computeSnapshotDiff();
+        SnapshotDiff diff = context.getSnapshotDiff();
+        if (diff == null) {
+            throw new FlowTestException("No snapshot diff available.");
+        }
+
+        // Get the entity by alias to find its ID
+        E entity = context.get(alias, entityClass);
+        Object entityId = extractEntityId(entity);
+
+        if (entityId == null) {
+            throw new FlowTestException("Cannot extract ID from entity with alias '" + alias + "'");
+        }
+
+        String tableName = resolveTableName(entityClass);
+        List<RowModification> modifications = diff.getModifiedRowsData(tableName);
+
+        for (RowModification mod : modifications) {
+            if (idsEqual(mod.getPrimaryKeyValue(), entityId)) {
+                return mod.getAfterRow();
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Extracts the ID from an entity using reflection.
+     */
+    private Object extractEntityId(Object entity) {
+        try {
+            java.lang.reflect.Method getId = entity.getClass().getMethod("getId");
+            return getId.invoke(entity);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Compares two IDs with type coercion.
+     */
+    private boolean idsEqual(Object id1, Object id2) {
+        if (id1 == null && id2 == null) {
+            return true;
+        }
+        if (id1 == null || id2 == null) {
+            return false;
+        }
+        if (id1 instanceof Number && id2 instanceof Number) {
+            return ((Number) id1).longValue() == ((Number) id2).longValue();
+        }
+        return id1.equals(id2);
     }
 
     /**

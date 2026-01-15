@@ -480,4 +480,116 @@ class OrderServiceTest {
                     .onlyChanged(Order.class, User.class);
         }
     }
+
+    @Nested
+    @DisplayName("场景: 结果断言新 API")
+    class ResultAssertionDemo {
+
+        @Test
+        @DisplayName("使用 result() 方法引用断言返回值")
+        void testResultAssertWithMethodReference() {
+            flow.arrange()
+                .add(User.class, UserTraits.vip(), UserTraits.balance(1000.00))
+                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+                    // 新 API: 使用方法引用断言返回值
+                    .result()
+                        .isNotNull()
+                        .has(Order::getStatus, Order.OrderStatus.CREATED)
+                        .has(Order::getTotalAmount, java.math.BigDecimal.valueOf(180))  // VIP 9折
+                    .and()
+                    .created(Order.class)
+                    .modified(User.class);
+        }
+
+        @Test
+        @DisplayName("使用 entity() 断言修改后的实体状态 (零查询)")
+        void testEntityStateAssert() {
+            flow.arrange()
+                .add(User.class, UserTraits.normal(), UserTraits.balance(1000.00))
+                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+                    // 新 API: 断言实体最终状态，数据来自快照，无需额外查询
+                    .entity(User.class)
+                        .has(User::getBalance, java.math.BigDecimal.valueOf(800))  // 1000 - 200 = 800
+                    .and()
+                    .created(Order.class);
+        }
+
+        @Test
+        @DisplayName("使用 newRow() 断言新创建的行数据 (零查询)")
+        void testNewRowAssert() {
+            flow.arrange()
+                .add(User.class, UserTraits.vip(), UserTraits.balance(1000.00))
+                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+                    // 新 API: 断言新增行，数据来自快照，无需额外查询
+                    .newRow(Order.class)
+                        .has("status", "CREATED")
+                        .has("total_amount", java.math.BigDecimal.valueOf(180))
+                    .and()
+                    .modified(User.class);
+        }
+
+        @Test
+        @DisplayName("组合使用 result(), entity(), newRow()")
+        void testCombinedAssertions() {
+            flow.arrange()
+                .add(User.class, UserTraits.vip(), UserTraits.balance(1000.00))
+                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+
+                    // 1. 返回值断言
+                    .result()
+                        .has(Order::getStatus, Order.OrderStatus.CREATED)
+                        .has(Order::getTotalAmount, java.math.BigDecimal.valueOf(180))
+                    .and()
+
+                    // 2. 实体最终状态断言 (从快照获取，无查询)
+                    .entity(User.class)
+                        .has(User::getBalance, java.math.BigDecimal.valueOf(820))  // 1000 - 180 = 820 (VIP折扣)
+                    .and()
+
+                    // 3. 新增行断言 (从快照获取，无查询)
+                    .newRow(Order.class)
+                        .has("status", "CREATED")
+                    .and()
+
+                    // 4. 传统数量断言
+                    .created(Order.class)
+                    .modified(User.class);
+        }
+    }
 }
