@@ -168,9 +168,14 @@ public class ArrangeBuilder {
             Object entity = buildAndPersist(spec);
             context.addEntity(spec.getAlias(), spec.getEntityClass(), entity);
 
-            // Track table for snapshot
+            // Track table for snapshot and register entity metadata for primary key detection
             EntityMetadata metadata = new EntityMetadata(spec.getEntityClass());
             context.addWatchedTable(metadata.getTableName());
+
+            // Register entity metadata to SnapshotEngine so it knows the correct primary key column
+            if (snapshotEngine != null) {
+                snapshotEngine.withEntityMetadata(spec.getEntityClass());
+            }
         }
         return new ActPhase(context, persister, snapshotEngine);
     }

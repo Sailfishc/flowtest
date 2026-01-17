@@ -194,6 +194,53 @@ class UserProfitServiceTest {
         }
     }
 
+    // ==================== 场景2.5: 多资产收益汇总（非事务模式） ====================
+
+    @Nested
+    @DisplayName("场景: 多资产收益汇总（非事务模式）")
+    class MultiAssetProfitNonTransactional {
+
+        @Test
+        @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+        @DisplayName("多种资产类型收益汇总 - 使用自动清理")
+        void testMultiAssetProfitWithAutoCleanup() {
+            String ipId = "IP_NT_001";
+            String ipRoleId = "ROLE_NT_001";
+            String outChannelId = "CH_NT_001";
+
+            try {
+                flow.arrange()
+                    .add(UserInfo.class,
+                        UserInfoTraits.pendingUser(),
+                        UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                        UserInfoTraits.profitDate("20240101"))
+                    .add("ylbAsset", AssetInfo.class,
+                        AssetInfoTraits.ylbWithProfit(15.00),
+                        AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .add("depAsset", AssetInfo.class,
+                        AssetInfoTraits.depositWithProfit(25.00),
+                        AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
+
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+
+                    .assertThat()
+                        .noException()
+                        .returnValue(detail -> {
+                            // Total = 15.00 + 25.00 = 40.00
+                            assertThat(detail.getProfitAmount()).isEqualByComparingTo("40.00");
+                        })
+                        // 直接通过 entity() 断言状态变更，无需手动查询
+                        .entity(UserInfo.class)
+                            .has(UserInfo::getStatus, "SUCC")
+                        .and();
+            } finally {
+                // Ensure cleanup happens even if test fails
+                flow.cleanup();
+            }
+        }
+    }
+
     // ==================== 场景3: 非活跃账户排除 ====================
 
     @Nested
