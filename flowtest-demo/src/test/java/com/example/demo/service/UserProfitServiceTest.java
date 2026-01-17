@@ -57,18 +57,18 @@ class UserProfitServiceTest {
             String outChannelId = "CH001";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .add(AssetInfo.class,
-                    AssetInfoTraits.ylbWithProfit(10.50),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add(AssetInfo.class,
+                            AssetInfoTraits.ylbWithProfit(10.50),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         assertThat(detail).isNotNull();
@@ -90,18 +90,18 @@ class UserProfitServiceTest {
             String outChannelId = "CH002";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .add(AssetInfo.class,
-                    AssetInfoTraits.depositWithProfit(25.80),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add(AssetInfo.class,
+                            AssetInfoTraits.depositWithProfit(25.80),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         assertThat(detail.getProfitAmount()).isEqualByComparingTo("25.80");
@@ -123,27 +123,27 @@ class UserProfitServiceTest {
             String outChannelId = "CH003";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .add("ylbAsset", AssetInfo.class,
-                    AssetInfoTraits.ylbWithProfit(10.50),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .add("depAsset", AssetInfo.class,
-                    AssetInfoTraits.depositWithProfit(20.30),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .add("fundMonthAsset", AssetInfo.class,
-                    AssetInfoTraits.fundMonthWithProfit(5.00),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .add("fundTermAsset", AssetInfo.class,
-                    AssetInfoTraits.fundTermWithProfit(0.00),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add("ylbAsset", AssetInfo.class,
+                            AssetInfoTraits.ylbWithProfit(10.50),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .add("depAsset", AssetInfo.class,
+                            AssetInfoTraits.depositWithProfit(20.30),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .add("fundMonthAsset", AssetInfo.class,
+                            AssetInfoTraits.fundMonthWithProfit(5.00),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .add("fundTermAsset", AssetInfo.class,
+                            AssetInfoTraits.fundTermWithProfit(0.00),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         // Total = 10.50 + 20.30 + 5.00 + 0.00 = 35.80
@@ -152,8 +152,9 @@ class UserProfitServiceTest {
                         // Verify extInfo JSON
                         try {
                             Map<String, BigDecimal> extInfo = objectMapper.readValue(
-                                detail.getExtInfo(),
-                                new TypeReference<Map<String, BigDecimal>>() {}
+                                    detail.getExtInfo(),
+                                    new TypeReference<Map<String, BigDecimal>>() {
+                                    }
                             );
                             assertThat(extInfo.get("ylb")).isEqualByComparingTo("10.50");
                             assertThat(extInfo.get("dep")).isEqualByComparingTo("20.30");
@@ -173,19 +174,19 @@ class UserProfitServiceTest {
             String outChannelId = "CH004";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .addMany(AssetInfo.class, 3, (asset, index) -> {
-                    AssetInfoTraits.ylbWithProfit(10.00 * (index + 1)).apply(asset);
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId).apply(asset);
-                })
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .addMany(AssetInfo.class, 3, (asset, index) -> {
+                        AssetInfoTraits.ylbWithProfit(10.00 * (index + 1)).apply(asset);
+                        AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId).apply(asset);
+                    })
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         // Total = 10 + 20 + 30 = 60
@@ -210,21 +211,21 @@ class UserProfitServiceTest {
 
             try {
                 flow.arrange()
-                    .add(UserInfo.class,
-                        UserInfoTraits.pendingUser(),
-                        UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                        UserInfoTraits.profitDate("20240101"))
-                    .add("ylbAsset", AssetInfo.class,
-                        AssetInfoTraits.ylbWithProfit(15.00),
-                        AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                    .add("depAsset", AssetInfo.class,
-                        AssetInfoTraits.depositWithProfit(25.00),
-                        AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                    .persist()
+                        .add(UserInfo.class,
+                                UserInfoTraits.pendingUser(),
+                                UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                                UserInfoTraits.profitDate("20240101"))
+                        .add("ylbAsset", AssetInfo.class,
+                                AssetInfoTraits.ylbWithProfit(15.00),
+                                AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                        .add("depAsset", AssetInfo.class,
+                                AssetInfoTraits.depositWithProfit(25.00),
+                                AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                        .persist()
 
-                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                        .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                    .assertThat()
+                        .assertThat()
                         .noException()
                         .returnValue(detail -> {
                             // Total = 15.00 + 25.00 = 40.00
@@ -232,7 +233,16 @@ class UserProfitServiceTest {
                         })
                         // 直接通过 entity() 断言状态变更，无需手动查询
                         .entity(UserInfo.class)
-                            .has(UserInfo::getStatus, "SUCC")
+                        .has(UserInfo::getStatus, "SUCC")
+                        .and()
+                        // 断言新增的 UserProfitDetail 记录
+                        .newRow(UserProfitDetail.class)
+                        .has(UserProfitDetail::getIpId, ipId)
+                        .has(UserProfitDetail::getIpRoleId, ipRoleId)
+                        .has(UserProfitDetail::getOutChannelId, outChannelId)
+                        .has(UserProfitDetail::getProfitType, "DAY")
+                        .has(UserProfitDetail::getProfitAmount, new BigDecimal("40.00"))
+                        .has(UserProfitDetail::getProfitDate, "20240101")
                         .and();
             } finally {
                 // Ensure cleanup happens even if test fails
@@ -255,24 +265,24 @@ class UserProfitServiceTest {
             String outChannelId = "CH005";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .add("activeAsset", AssetInfo.class,
-                    AssetInfoTraits.ylbWithProfit(10.00),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .add("inactiveAsset", AssetInfo.class,
-                    AssetInfoTraits.validAsset(),
-                    AssetInfoTraits.deposit(),
-                    AssetInfoTraits.dayProfit(100.00),
-                    AssetInfoTraits.inactiveAccount(),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add("activeAsset", AssetInfo.class,
+                            AssetInfoTraits.ylbWithProfit(10.00),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .add("inactiveAsset", AssetInfo.class,
+                            AssetInfoTraits.validAsset(),
+                            AssetInfoTraits.deposit(),
+                            AssetInfoTraits.dayProfit(100.00),
+                            AssetInfoTraits.inactiveAccount(),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         // Only active account's 10.00 is included
@@ -288,24 +298,24 @@ class UserProfitServiceTest {
             String outChannelId = "CH006";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .add("normalAsset", AssetInfo.class,
-                    AssetInfoTraits.ylbWithProfit(15.00),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .add("deletedAsset", AssetInfo.class,
-                    AssetInfoTraits.validAsset(),
-                    AssetInfoTraits.deposit(),
-                    AssetInfoTraits.dayProfit(200.00),
-                    AssetInfoTraits.deleted(),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add("normalAsset", AssetInfo.class,
+                            AssetInfoTraits.ylbWithProfit(15.00),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .add("deletedAsset", AssetInfo.class,
+                            AssetInfoTraits.validAsset(),
+                            AssetInfoTraits.deposit(),
+                            AssetInfoTraits.dayProfit(200.00),
+                            AssetInfoTraits.deleted(),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         assertThat(detail.getProfitAmount()).isEqualByComparingTo("15.00");
@@ -327,15 +337,15 @@ class UserProfitServiceTest {
             String outChannelId = "CH007";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         assertThat(detail.getProfitAmount()).isEqualByComparingTo("0.00");
@@ -362,18 +372,18 @@ class UserProfitServiceTest {
             String outChannelId = "CH008";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.retryUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .add(AssetInfo.class,
-                    AssetInfoTraits.ylbWithProfit(8.88),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.retryUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add(AssetInfo.class,
+                            AssetInfoTraits.ylbWithProfit(8.88),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         assertThat(detail.getProfitAmount()).isEqualByComparingTo("8.88");
@@ -399,17 +409,17 @@ class UserProfitServiceTest {
             String outChannelId = "CH009";
 
             flow.arrange()
-                .add("pendingUser", UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId))
-                .add("successUser", UserInfo.class,
-                    UserInfoTraits.completedUser(),
-                    UserInfoTraits.identity(ipId + "_S", ipRoleId + "_S", outChannelId + "_S"))
-                .persist()
+                    .add("pendingUser", UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId))
+                    .add("successUser", UserInfo.class,
+                            UserInfoTraits.completedUser(),
+                            UserInfoTraits.identity(ipId + "_S", ipRoleId + "_S", outChannelId + "_S"))
+                    .persist()
 
-                .act(() -> userProfitService.queryPendingUsers("prod", "01", "20240101"))
+                    .act(() -> userProfitService.queryPendingUsers("prod", "01", "20240101"))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(users -> {
                         assertThat(users).hasSize(1);
@@ -421,25 +431,25 @@ class UserProfitServiceTest {
         @DisplayName("根据环境和分片查询待处理用户")
         void testQueryByEnvAndSplit() {
             flow.arrange()
-                // prod env, split 01
-                .add("prodUser1", UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.randomIdentity())
-                // pre env, split 01
-                .add("preUser", UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.pre(),
-                    UserInfoTraits.randomIdentity())
-                // prod env, split 02
-                .add("prodUser2", UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.splitId("02"),
-                    UserInfoTraits.randomIdentity())
-                .persist()
+                    // prod env, split 01
+                    .add("prodUser1", UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.randomIdentity())
+                    // pre env, split 01
+                    .add("preUser", UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.pre(),
+                            UserInfoTraits.randomIdentity())
+                    // prod env, split 02
+                    .add("prodUser2", UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.splitId("02"),
+                            UserInfoTraits.randomIdentity())
+                    .persist()
 
-                .act(() -> userProfitService.queryPendingUsers("prod", "01", "20240101"))
+                    .act(() -> userProfitService.queryPendingUsers("prod", "01", "20240101"))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(users -> {
                         // Only prodUser1 matches
@@ -458,32 +468,32 @@ class UserProfitServiceTest {
         @DisplayName("批量处理多个待处理用户")
         void testBatchCalculateProfit() {
             flow.arrange()
-                .add("user1", UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity("IP101", "ROLE101", "CH101"),
-                    UserInfoTraits.profitDate("20240101"))
-                .add("asset1", AssetInfo.class,
-                    AssetInfoTraits.ylbWithProfit(10.00),
-                    AssetInfoTraits.belongsTo("IP101", "ROLE101", "CH101"))
-                .add("user2", UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity("IP102", "ROLE102", "CH102"),
-                    UserInfoTraits.profitDate("20240101"))
-                .add("asset2", AssetInfo.class,
-                    AssetInfoTraits.depositWithProfit(20.00),
-                    AssetInfoTraits.belongsTo("IP102", "ROLE102", "CH102"))
-                .add("user3", UserInfo.class,
-                    UserInfoTraits.retryUser(),
-                    UserInfoTraits.identity("IP103", "ROLE103", "CH103"),
-                    UserInfoTraits.profitDate("20240101"))
-                .add("asset3", AssetInfo.class,
-                    AssetInfoTraits.fundMonthWithProfit(30.00),
-                    AssetInfoTraits.belongsTo("IP103", "ROLE103", "CH103"))
-                .persist()
+                    .add("user1", UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity("IP101", "ROLE101", "CH101"),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add("asset1", AssetInfo.class,
+                            AssetInfoTraits.ylbWithProfit(10.00),
+                            AssetInfoTraits.belongsTo("IP101", "ROLE101", "CH101"))
+                    .add("user2", UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity("IP102", "ROLE102", "CH102"),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add("asset2", AssetInfo.class,
+                            AssetInfoTraits.depositWithProfit(20.00),
+                            AssetInfoTraits.belongsTo("IP102", "ROLE102", "CH102"))
+                    .add("user3", UserInfo.class,
+                            UserInfoTraits.retryUser(),
+                            UserInfoTraits.identity("IP103", "ROLE103", "CH103"),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add("asset3", AssetInfo.class,
+                            AssetInfoTraits.fundMonthWithProfit(30.00),
+                            AssetInfoTraits.belongsTo("IP103", "ROLE103", "CH103"))
+                    .persist()
 
-                .act(() -> userProfitService.batchCalculateProfit("prod", "01", "20240101"))
+                    .act(() -> userProfitService.batchCalculateProfit("prod", "01", "20240101"))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(result -> {
                         int successCount = result[0];
@@ -516,33 +526,34 @@ class UserProfitServiceTest {
             String outChannelId = "CH400";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .add("ylb", AssetInfo.class,
-                    AssetInfoTraits.ylbWithProfit(100.00),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .add("dep", AssetInfo.class,
-                    AssetInfoTraits.depositWithProfit(200.00),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .add("fundMonth", AssetInfo.class,
-                    AssetInfoTraits.fundMonthWithProfit(50.00),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .add("fundTerm", AssetInfo.class,
-                    AssetInfoTraits.fundTermWithProfit(25.00),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add("ylb", AssetInfo.class,
+                            AssetInfoTraits.ylbWithProfit(100.00),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .add("dep", AssetInfo.class,
+                            AssetInfoTraits.depositWithProfit(200.00),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .add("fundMonth", AssetInfo.class,
+                            AssetInfoTraits.fundMonthWithProfit(50.00),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .add("fundTerm", AssetInfo.class,
+                            AssetInfoTraits.fundTermWithProfit(25.00),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         try {
                             Map<String, BigDecimal> extInfo = objectMapper.readValue(
-                                detail.getExtInfo(),
-                                new TypeReference<Map<String, BigDecimal>>() {}
+                                    detail.getExtInfo(),
+                                    new TypeReference<Map<String, BigDecimal>>() {
+                                    }
                             );
 
                             assertThat(extInfo).hasSize(4);
@@ -552,7 +563,7 @@ class UserProfitServiceTest {
                             assertThat(extInfo.get("fund_term")).isEqualByComparingTo("25.00");
 
                             assertThat(detail.getProfitAmount())
-                                .isEqualByComparingTo("375.00");
+                                    .isEqualByComparingTo("375.00");
                         } catch (Exception e) {
                             throw new AssertionError("Failed to parse extInfo: " + detail.getExtInfo(), e);
                         }
@@ -567,24 +578,25 @@ class UserProfitServiceTest {
             String outChannelId = "CH401";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .add(AssetInfo.class,
-                    AssetInfoTraits.ylbWithProfit(88.88),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add(AssetInfo.class,
+                            AssetInfoTraits.ylbWithProfit(88.88),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .returnValue(detail -> {
                         try {
                             Map<String, BigDecimal> extInfo = objectMapper.readValue(
-                                detail.getExtInfo(),
-                                new TypeReference<Map<String, BigDecimal>>() {}
+                                    detail.getExtInfo(),
+                                    new TypeReference<Map<String, BigDecimal>>() {
+                                    }
                             );
 
                             assertThat(extInfo.get("ylb")).isEqualByComparingTo("88.88");
@@ -612,22 +624,22 @@ class UserProfitServiceTest {
             String outChannelId = "CH500";
 
             flow.arrange()
-                .add(UserInfo.class,
-                    UserInfoTraits.pendingUser(),
-                    UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
-                    UserInfoTraits.profitDate("20240101"))
-                .add(AssetInfo.class,
-                    AssetInfoTraits.ylbWithProfit(66.66),
-                    AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
-                .persist()
+                    .add(UserInfo.class,
+                            UserInfoTraits.pendingUser(),
+                            UserInfoTraits.identity(ipId, ipRoleId, outChannelId),
+                            UserInfoTraits.profitDate("20240101"))
+                    .add(AssetInfo.class,
+                            AssetInfoTraits.ylbWithProfit(66.66),
+                            AssetInfoTraits.belongsTo(ipId, ipRoleId, outChannelId))
+                    .persist()
 
-                .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
+                    .act(() -> userProfitService.calculateUserProfit(flow.get(UserInfo.class)))
 
-                .assertThat()
+                    .assertThat()
                     .noException()
                     .result()
-                        .has(UserProfitDetail::getProfitType, "DAY")
-                        .has(UserProfitDetail::getProfitAmount, new BigDecimal("66.66"))
+                    .has(UserProfitDetail::getProfitType, "DAY")
+                    .has(UserProfitDetail::getProfitAmount, new BigDecimal("66.66"))
                     .and();
         }
     }

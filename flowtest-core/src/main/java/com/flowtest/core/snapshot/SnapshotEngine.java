@@ -355,9 +355,13 @@ public class SnapshotEngine {
             long idBasedNewRows = Math.max(0, afterMaxId - beforeMaxId);
 
             // Use the smaller value to avoid false positives from AUTO_INCREMENT gaps
-            // But if full row data is available, use count-based calculation
+            // But if full row data is available (or captureFullRows is enabled), use count-based calculation
             long newRows;
-            if (beforeSnap != null && afterSnap != null && beforeSnap.hasRowData() && afterSnap.hasRowData()) {
+            // When captureFullRows is enabled, always use count-based calculation
+            // because MAX(ID) doesn't work for string primary keys
+            if (captureFullRows) {
+                newRows = countBasedNewRows;
+            } else if (beforeSnap != null && afterSnap != null && beforeSnap.hasRowData() && afterSnap.hasRowData()) {
                 // With full row data, count-based is more accurate
                 newRows = countBasedNewRows;
             } else {
@@ -372,7 +376,18 @@ public class SnapshotEngine {
 
             // Fetch actual new row data if there are new rows
             if (newRows > 0) {
-                List<Map<String, Object>> newRowsData = fetchNewRows(table, idColumn, beforeMaxId, afterMaxId);
+                List<Map<String, Object>> newRowsData;
+                // When full row data is available, compute new rows from row data comparison
+                // This handles string primary keys correctly (where MAX() doesn't work)
+                if (afterSnap != null && afterSnap.hasRowData()) {
+                    // After snapshot has row data - compute new rows by comparing with before
+                    // This works even if before snapshot is empty (new table scenario)
+                    newRowsData = computeNewRowsFromRowData(
+                        beforeSnap != null ? beforeSnap : new TableSnapshot(table),
+                        afterSnap);
+                } else {
+                    newRowsData = fetchNewRows(table, idColumn, beforeMaxId, afterMaxId);
+                }
                 diff.setNewRowsData(table, newRowsData);
             }
 
@@ -428,6 +443,23 @@ public class SnapshotEngine {
             log.warn("Failed to fetch new rows for table {}: ", table, e.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    /**
+     * Computes new rows by comparing before and after row data.
+     * This method works correctly with any primary key type (including strings).
+     */
+    private List<Map<String, Object>> computeNewRowsFromRowData(TableSnapshot beforeSnap, TableSnapshot afterSnap) {
+        List<Map<String, Object>> newRows = new ArrayList<>();
+        Set<Object> beforeKeys = beforeSnap.getRowsByPrimaryKey().keySet();
+
+        for (Map.Entry<Object, Map<String, Object>> entry : afterSnap.getRowsByPrimaryKey().entrySet()) {
+            if (!beforeKeys.contains(entry.getKey())) {
+                newRows.add(entry.getValue());
+            }
+        }
+
+        return newRows;
     }
 
     /**
