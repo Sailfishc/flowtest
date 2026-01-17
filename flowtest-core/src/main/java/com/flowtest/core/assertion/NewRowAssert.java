@@ -5,6 +5,9 @@ import com.flowtest.core.assertion.ResultAssert.SerializableFunction;
 import java.lang.invoke.SerializedLambda;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -14,12 +17,20 @@ import java.util.Objects;
  *
  * <p>Example usage:
  * <pre>{@code
- * .assertThat()
- *     .newRow(Order.class)
- *         .has(Order::getStatus, OrderStatus.CREATED)
- *         .has("total_amount", BigDecimal.valueOf(180))
- *     .and()
- *     .modified(User.class);
+ * // Simple case: only one new row
+ * .newRow(Order.class)
+ *     .has(Order::getStatus, OrderStatus.CREATED)
+ *
+ * // Multiple new rows: use matching() to locate
+ * .newRow(Order.class)
+ *     .matching("user_id", userId)
+ *     .has(Order::getStatus, OrderStatus.CREATED)
+ *
+ * // Multiple matching conditions
+ * .newRow(Order.class)
+ *     .matching("user_id", userId)
+ *     .matching("product_id", productId)
+ *     .has("status", "CREATED")
  * }</pre>
  *
  * @param <E> the entity type
@@ -28,15 +39,88 @@ import java.util.Objects;
 public class NewRowAssert<E, R> {
 
     private final AssertBuilder<R> parent;
-    private final Map<String, Object> rowData;
+    private final List<Map<String, Object>> allNewRows;
     private final Class<E> entityClass;
-    private final int index;
 
-    public NewRowAssert(AssertBuilder<R> parent, Map<String, Object> rowData, Class<E> entityClass, int index) {
+    /** Current matched row (null means not yet matched, use first row) */
+    private Map<String, Object> currentRow;
+
+    /** Matching conditions applied (for error messages) */
+    private final Map<String, Object> matchConditions = new LinkedHashMap<>();
+
+    /** Whether matching() was explicitly called */
+    private boolean matchingCalled = false;
+
+    public NewRowAssert(AssertBuilder<R> parent, List<Map<String, Object>> allNewRows, Class<E> entityClass) {
         this.parent = parent;
-        this.rowData = rowData;
+        this.allNewRows = allNewRows != null ? new ArrayList<>(allNewRows) : new ArrayList<>();
         this.entityClass = entityClass;
-        this.index = index;
+        // Default to first row if available
+        this.currentRow = this.allNewRows.isEmpty() ? null : this.allNewRows.get(0);
+    }
+
+    /**
+     * Locates a new row by matching a column value.
+     * Can be chained multiple times for multiple conditions.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * .newRow(Order.class)
+     *     .matching("user_id", userId)
+     *     .matching("product_id", productId)
+     *     .has("status", "CREATED")
+     * }</pre>
+     *
+     * @param columnName the column to match
+     * @param value the expected value
+     * @return this for chaining
+     */
+    public NewRowAssert<E, R> matching(String columnName, Object value) {
+        matchConditions.put(columnName, value);
+        matchingCalled = true;
+
+        // Filter rows that match all conditions so far
+        List<Map<String, Object>> matchedRows = new ArrayList<>();
+        for (Map<String, Object> row : allNewRows) {
+            if (rowMatchesAllConditions(row)) {
+                matchedRows.add(row);
+            }
+        }
+
+        if (matchedRows.isEmpty()) {
+            throw new AssertionError(String.format(
+                "No new %s row found matching %s. Total new rows: %d",
+                entityClass.getSimpleName(), matchConditions, allNewRows.size()));
+        }
+
+        if (matchedRows.size() > 1) {
+            // Multiple matches - keep first one but continue (user might add more conditions)
+            currentRow = matchedRows.get(0);
+        } else {
+            currentRow = matchedRows.get(0);
+        }
+
+        return this;
+    }
+
+    /**
+     * Locates a new row by matching a property using method reference.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * .newRow(Order.class)
+     *     .matching(Order::getUserId, userId)
+     *     .has(Order::getStatus, OrderStatus.CREATED)
+     * }</pre>
+     *
+     * @param getter the method reference to extract the property
+     * @param value the expected value
+     * @param <V> the property type
+     * @return this for chaining
+     */
+    public <V> NewRowAssert<E, R> matching(SerializableFunction<E, V> getter, V value) {
+        String columnName = extractColumnName(getter);
+        return matching(columnName, value);
     }
 
     /**
@@ -49,19 +133,15 @@ public class NewRowAssert<E, R> {
      * @return this for chaining
      */
     public <V> NewRowAssert<E, R> has(SerializableFunction<E, V> getter, V expected) {
-        if (rowData == null) {
-            throw new AssertionError(String.format(
-                "Cannot assert property on null row data. No new row at index %d for %s.",
-                index, entityClass.getSimpleName()));
-        }
+        ensureRowAvailable();
 
         String columnName = extractColumnName(getter);
-        Object actual = getValueCaseInsensitive(columnName);
+        Object actual = getValueCaseInsensitive(currentRow, columnName);
 
         if (!valuesEqual(expected, actual)) {
             throw new AssertionError(String.format(
-                "New %s[%d] column '%s': expected <%s> but was <%s>",
-                entityClass.getSimpleName(), index, columnName, expected, actual));
+                "New %s%s column '%s': expected <%s> but was <%s>",
+                entityClass.getSimpleName(), getMatchDescription(), columnName, expected, actual));
         }
         return this;
     }
@@ -75,18 +155,14 @@ public class NewRowAssert<E, R> {
      * @return this for chaining
      */
     public NewRowAssert<E, R> has(String columnName, Object expected) {
-        if (rowData == null) {
-            throw new AssertionError(String.format(
-                "Cannot assert property on null row data. No new row at index %d for %s.",
-                index, entityClass.getSimpleName()));
-        }
+        ensureRowAvailable();
 
-        Object actual = getValueCaseInsensitive(columnName);
+        Object actual = getValueCaseInsensitive(currentRow, columnName);
 
         if (!valuesEqual(expected, actual)) {
             throw new AssertionError(String.format(
-                "New %s[%d] column '%s': expected <%s> but was <%s>",
-                entityClass.getSimpleName(), index, columnName, expected, actual));
+                "New %s%s column '%s': expected <%s> but was <%s>",
+                entityClass.getSimpleName(), getMatchDescription(), columnName, expected, actual));
         }
         return this;
     }
@@ -99,36 +175,89 @@ public class NewRowAssert<E, R> {
     }
 
     /**
-     * Gets the raw row data map.
+     * Gets the raw row data map of the current matched row.
      */
     public Map<String, Object> getRowData() {
-        return rowData;
+        return currentRow;
     }
 
     /**
-     * Gets value from row data with case-insensitive column name lookup.
+     * Gets the count of new rows.
      */
-    private Object getValueCaseInsensitive(String columnName) {
+    public int count() {
+        return allNewRows.size();
+    }
+
+    // ==================== Private helper methods ====================
+
+    private void ensureRowAvailable() {
+        if (currentRow == null) {
+            if (allNewRows.isEmpty()) {
+                throw new AssertionError(String.format(
+                    "No new rows found for %s", entityClass.getSimpleName()));
+            } else {
+                throw new AssertionError(String.format(
+                    "No new %s row matched conditions: %s",
+                    entityClass.getSimpleName(), matchConditions));
+            }
+        }
+    }
+
+    private boolean rowMatchesAllConditions(Map<String, Object> row) {
+        for (Map.Entry<String, Object> condition : matchConditions.entrySet()) {
+            Object actualValue = getValueCaseInsensitiveNullable(row, condition.getKey());
+            if (!valuesEqual(condition.getValue(), actualValue)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private String getMatchDescription() {
+        if (matchConditions.isEmpty()) {
+            return "";
+        }
+        return " matching " + matchConditions;
+    }
+
+    private Object getValueCaseInsensitive(Map<String, Object> row, String columnName) {
+        Object value = getValueCaseInsensitiveNullable(row, columnName);
+        if (value == null && !containsColumnCaseInsensitive(row, columnName)) {
+            throw new AssertionError(String.format(
+                "Column '%s' not found in new %s. Available columns: %s",
+                columnName, entityClass.getSimpleName(), row.keySet()));
+        }
+        return value;
+    }
+
+    private Object getValueCaseInsensitiveNullable(Map<String, Object> row, String columnName) {
         // Try exact match first
-        if (rowData.containsKey(columnName)) {
-            return rowData.get(columnName);
+        if (row.containsKey(columnName)) {
+            return row.get(columnName);
         }
 
         // Try case-insensitive match
-        for (Map.Entry<String, Object> entry : rowData.entrySet()) {
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
             if (entry.getKey().equalsIgnoreCase(columnName)) {
                 return entry.getValue();
             }
         }
 
-        throw new AssertionError(String.format(
-            "Column '%s' not found in new %s[%d]. Available columns: %s",
-            columnName, entityClass.getSimpleName(), index, rowData.keySet()));
+        return null;
     }
 
-    /**
-     * Extracts the column name from a method reference.
-     */
+    private boolean containsColumnCaseInsensitive(Map<String, Object> row, String columnName) {
+        if (row.containsKey(columnName)) {
+            return true;
+        }
+        for (String key : row.keySet()) {
+            if (key.equalsIgnoreCase(columnName)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private String extractColumnName(SerializableFunction<E, ?> getter) {
         try {
             Method writeReplace = getter.getClass().getDeclaredMethod("writeReplace");

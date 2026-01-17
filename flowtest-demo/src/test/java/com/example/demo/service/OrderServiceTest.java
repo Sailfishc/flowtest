@@ -556,6 +556,31 @@ class OrderServiceTest {
         }
 
         @Test
+        @DisplayName("使用 matching() 定位特定的新增行")
+        void testNewRowMatchingAssert() {
+            flow.arrange()
+                .add(User.class, UserTraits.vip(), UserTraits.balance(1000.00))
+                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+                .persist()
+
+                .act(() -> orderService.createOrder(
+                        flow.get(User.class).getId(),
+                        flow.get(Product.class).getId(),
+                        2))
+
+                .assertThat()
+                    .noException()
+                    // 新 API: 使用 matching() 通过条件定位特定的新增行
+                    // 当有多条新增数据时，可通过 user_id、product_id 等条件精确定位
+                    .newRow(Order.class)
+                        .matching("user_id", flow.get(User.class).getId())
+                        .has("status", "CREATED")
+                        .has("total_amount", java.math.BigDecimal.valueOf(180))
+                    .and()
+                    .created(Order.class);
+        }
+
+        @Test
         @DisplayName("组合使用 result(), entity(), newRow()")
         void testCombinedAssertions() {
             flow.arrange()

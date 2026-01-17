@@ -169,17 +169,20 @@ public class AssertBuilder<T> {
     // ==================== New row assertion methods ====================
 
     /**
-     * Returns a NewRowAssert for the first new row of the given entity type.
+     * Returns a NewRowAssert for new rows of the given entity type.
      * The row data is retrieved from the snapshot diff (no extra DB query).
      *
-     * <p>Example:
+     * <p>For single new row (most common):
      * <pre>{@code
-     * .assertThat()
-     *     .newRow(Order.class)
-     *         .has(Order::getStatus, OrderStatus.CREATED)
-     *         .has("total_amount", 180)
-     *     .and()
-     *     .modified(User.class);
+     * .newRow(Order.class)
+     *     .has(Order::getStatus, OrderStatus.CREATED)
+     * }</pre>
+     *
+     * <p>For multiple new rows, use matching() to locate:
+     * <pre>{@code
+     * .newRow(Order.class)
+     *     .matching("user_id", userId)
+     *     .has(Order::getStatus, OrderStatus.CREATED)
      * }</pre>
      *
      * @param entityClass the entity class
@@ -187,18 +190,6 @@ public class AssertBuilder<T> {
      * @return NewRowAssert for chaining assertions
      */
     public <E> NewRowAssert<E, T> newRow(Class<E> entityClass) {
-        return newRow(entityClass, 0);
-    }
-
-    /**
-     * Returns a NewRowAssert for the new row at the given index.
-     *
-     * @param entityClass the entity class
-     * @param index the index of the new row (0-based)
-     * @param <E> the entity type
-     * @return NewRowAssert for chaining assertions
-     */
-    public <E> NewRowAssert<E, T> newRow(Class<E> entityClass, int index) {
         phase.computeSnapshotDiff();
         SnapshotDiff diff = context.getSnapshotDiff();
         if (diff == null) {
@@ -209,18 +200,7 @@ public class AssertBuilder<T> {
         String tableName = resolveTableName(entityClass);
         List<Map<String, Object>> newRows = diff.getNewRowsData(tableName);
 
-        if (newRows.isEmpty()) {
-            throw new AssertionError(String.format(
-                "No new rows found for %s (table: %s)", entityClass.getSimpleName(), tableName));
-        }
-
-        if (index >= newRows.size()) {
-            throw new AssertionError(String.format(
-                "New row index %d out of bounds for %s. Only %d new row(s) found.",
-                index, entityClass.getSimpleName(), newRows.size()));
-        }
-
-        return new NewRowAssert<>(this, newRows.get(index), entityClass, index);
+        return new NewRowAssert<>(this, newRows, entityClass);
     }
 
     // ==================== Helper methods for entity/newRow ====================
