@@ -41,11 +41,61 @@ public class JdbcEntityPersister implements EntityPersister {
         }
 
         EntityMetadata metadata = getMetadata(entity.getClass());
+        
+        // Check if entity already has an ID set (application-provided)
+        Object existingId = metadata.getId(entity);
+        if (existingId != null) {
+            // Application provided the ID - just insert without retrieving generated keys
+            return persistWithExistingId(entity, metadata, existingId);
+        }
+        
+        // Check ID strategy to determine if database generates the ID
+        if (metadata.isApplicationProvidedId()) {
+            // Strategy indicates application should provide ID, but none was provided
+            // This might be an error case, but we'll proceed with the insert
+            log.warn("Entity {} uses application-provided ID strategy but no ID was set", 
+                entity.getClass().getSimpleName());
+            return persistWithExistingId(entity, metadata, null);
+        }
+        
+        // Database-generated ID (AUTO strategy) - retrieve generated keys
+        return persistWithGeneratedId(entity, metadata);
+    }
+    
+    /**
+     * Persists an entity with an existing (application-provided) ID.
+     * Does not attempt to retrieve generated keys.
+     */
+    private <T> Object persistWithExistingId(T entity, EntityMetadata metadata, Object existingId) {
         List<String> columns = metadata.getInsertColumns(entity);
         List<Object> values = metadata.getInsertValues(entity, columns);
-
         String sql = buildInsertSql(metadata.getTableName(), columns);
-        log.debug("Executing INSERT: {} with values: {}", sql, values);
+        
+        log.debug("Executing INSERT (app-provided ID): {} with values: {}", sql, values);
+        
+        jdbcTemplate.execute((Connection connection) -> {
+            try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                for (int i = 0; i < values.size(); i++) {
+                    ps.setObject(i + 1, convertValue(values.get(i)));
+                }
+                ps.executeUpdate();
+                return null;
+            }
+        });
+        
+        log.debug("Persisted entity with existing ID: {}", existingId);
+        return existingId;
+    }
+    
+    /**
+     * Persists an entity and retrieves the database-generated ID.
+     */
+    private <T> Object persistWithGeneratedId(T entity, EntityMetadata metadata) {
+        List<String> columns = metadata.getInsertColumns(entity);
+        List<Object> values = metadata.getInsertValues(entity, columns);
+        String sql = buildInsertSql(metadata.getTableName(), columns);
+        
+        log.debug("Executing INSERT (db-generated ID): {} with values: {}", sql, values);
 
         Number generatedId = jdbcTemplate.execute((Connection connection) -> {
             try (PreparedStatement ps = connection.prepareStatement(
@@ -70,13 +120,6 @@ public class JdbcEntityPersister implements EntityPersister {
             }
         });
 
-        // Only set generated ID if the entity's ID is not already set
-        Object existingId = metadata.getId(entity);
-        if (existingId != null) {
-            log.debug("Entity already has ID set: {}", existingId);
-            return existingId;
-        }
-
         if (generatedId != null) {
             metadata.setId(entity, generatedId);
             log.debug("Generated ID: {}", generatedId);
@@ -84,6 +127,7 @@ public class JdbcEntityPersister implements EntityPersister {
         }
 
         // If no key was generated, return null
+        log.warn("No generated key returned for entity {}", entity.getClass().getSimpleName());
         return null;
     }
 

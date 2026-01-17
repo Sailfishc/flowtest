@@ -1,5 +1,6 @@
 package com.flowtest.core.snapshot;
 
+import com.flowtest.core.fixture.EntityMetadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -9,17 +10,25 @@ import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Engine for taking database snapshots and computing differences.
- * Uses MAX(ID) and row count to detect changes efficiently.
- */
 public class SnapshotEngine {
 
     private static final Logger log = LoggerFactory.getLogger(SnapshotEngine.class);
 
     private final JdbcTemplate jdbcTemplate;
-    private String idColumnName = "id";
+    
+    /** Default ID column name when auto-detection fails */
+    private String defaultIdColumnName = "id";
+    
+    /** Cache for table primary key columns (detected from database metadata) */
+    private final Map<String, String> tablePrimaryKeyCache = new ConcurrentHashMap<>();
+    
+    /** User-configured primary key columns per table (takes precedence over auto-detection) */
+    private final Map<String, String> configuredPrimaryKeys = new ConcurrentHashMap<>();
+    
+    /** Entity metadata registry for entity class to table mapping */
+    private final Map<String, EntityMetadata> entityMetadataByTable = new ConcurrentHashMap<>();
 
     /** Whether to capture full row data for modification detection */
     private boolean captureFullRows = true;
@@ -36,11 +45,175 @@ public class SnapshotEngine {
     }
 
     /**
-     * Sets the ID column name to use for snapshots.
+     * Sets the default ID column name to use when auto-detection fails.
      * Default is "id".
+     * 
+     * @deprecated Use {@link #setTableIdColumn(String, String)} for per-table configuration
+     *             or let the engine auto-detect the primary key.
      */
+    @Deprecated
     public void setIdColumnName(String idColumnName) {
-        this.idColumnName = idColumnName;
+        this.defaultIdColumnName = idColumnName;
+    }
+    
+    /**
+     * Configures the primary key column for a specific table.
+     * This takes precedence over auto-detection.
+     * 
+     * @param tableName the table name
+     * @param columnName the primary key column name
+     * @return this engine for fluent chaining
+     */
+    public SnapshotEngine setTableIdColumn(String tableName, String columnName) {
+        configuredPrimaryKeys.put(tableName.toLowerCase(), columnName);
+        return this;
+    }
+    
+    /**
+     * Configures primary key columns for multiple tables.
+     * 
+     * @param tableIdColumns map of table name to primary key column name
+     * @return this engine for fluent chaining
+     */
+    public SnapshotEngine setTableIdColumns(Map<String, String> tableIdColumns) {
+        for (Map.Entry<String, String> entry : tableIdColumns.entrySet()) {
+            setTableIdColumn(entry.getKey(), entry.getValue());
+        }
+        return this;
+    }
+    
+    /**
+     * Registers entity metadata for a given entity class.
+     * The engine will use this metadata to determine the primary key column
+     * for the entity's table.
+     * 
+     * @param entityClass the entity class
+     * @return this engine for fluent chaining
+     */
+    public SnapshotEngine withEntityMetadata(Class<?> entityClass) {
+        EntityMetadata metadata = new EntityMetadata(entityClass);
+        String tableName = metadata.getTableName().toLowerCase();
+        entityMetadataByTable.put(tableName, metadata);
+        // Also register the ID column from metadata
+        configuredPrimaryKeys.put(tableName, metadata.getIdColumnName());
+        log.debug("Registered entity metadata for {}: table={}, idColumn={}", 
+            entityClass.getSimpleName(), metadata.getTableName(), metadata.getIdColumnName());
+        return this;
+    }
+    
+    /**
+     * Registers entity metadata for multiple entity classes.
+     * 
+     * @param entityClasses the entity classes
+     * @return this engine for fluent chaining
+     */
+    public SnapshotEngine withEntityMetadata(Class<?>... entityClasses) {
+        for (Class<?> entityClass : entityClasses) {
+            withEntityMetadata(entityClass);
+        }
+        return this;
+    }
+    
+    /** Maps lowercase table names to their original case (as seen in database) */
+    private final Map<String, String> originalTableNames = new ConcurrentHashMap<>();
+    
+    /**
+     * Gets the primary key column name for a table.
+     * Priority: 1) User-configured, 2) Entity metadata, 3) Auto-detected from DB, 4) Default
+     * 
+     * @param tableName the table name
+     * @return the primary key column name
+     */
+    public String getIdColumnForTable(String tableName) {
+        String tableKey = tableName.toLowerCase();
+        
+        // Remember the original table name for detection
+        originalTableNames.putIfAbsent(tableKey, tableName);
+        
+        // 1. Check user-configured primary keys
+        String configured = configuredPrimaryKeys.get(tableKey);
+        if (configured != null) {
+            return configured;
+        }
+        
+        // 2. Check entity metadata (already registered in configuredPrimaryKeys via withEntityMetadata)
+        // This is handled by step 1
+        
+        // 3. Try auto-detection from database metadata (with caching)
+        String detected = tablePrimaryKeyCache.computeIfAbsent(tableKey, this::detectPrimaryKeyColumn);
+        if (detected != null) {
+            return detected;
+        }
+        
+        // 4. Fallback to default
+        return defaultIdColumnName;
+    }
+    
+    /**
+     * Detects the primary key column for a table using JDBC DatabaseMetaData.
+     * Tries multiple case variants to handle different database case sensitivity.
+     * 
+     * @param tableKey the table name key (lowercase)
+     * @return the primary key column name, or null if not found
+     */
+    private String detectPrimaryKeyColumn(String tableKey) {
+        DataSource dataSource = jdbcTemplate.getDataSource();
+        if (dataSource == null) {
+            return null;
+        }
+        
+        // Get the original table name if available, otherwise use the key
+        String originalName = originalTableNames.getOrDefault(tableKey, tableKey);
+        
+        try (Connection connection = dataSource.getConnection()) {
+            DatabaseMetaData metaData = connection.getMetaData();
+            
+            // Try different case variants
+            String[] variants = {
+                originalName,                    // Original case (e.g., "T_USER_INFO")
+                tableKey,                        // Lowercase (e.g., "t_user_info")
+                tableKey.toUpperCase()           // Uppercase (e.g., "T_USER_INFO")
+            };
+            
+            Set<String> tried = new HashSet<>();
+            for (String variant : variants) {
+                if (variant == null || !tried.add(variant)) {
+                    continue; // Skip nulls and duplicates
+                }
+                
+                String pkColumn = findPrimaryKeyFromMetadata(metaData, connection, variant);
+                if (pkColumn != null) {
+                    log.debug("Auto-detected primary key for table {} (tried: '{}'): {}", 
+                        tableKey, variant, pkColumn);
+                    return pkColumn;
+                }
+            }
+            
+            log.debug("Could not auto-detect primary key for table {}, using default: {}", 
+                tableKey, defaultIdColumnName);
+            return null;
+        } catch (Exception e) {
+            log.warn("Failed to detect primary key for table {}: {}", tableKey, e.getMessage());
+            return null;
+        }
+    }
+    
+    /**
+     * Finds the primary key column from database metadata.
+     */
+    private String findPrimaryKeyFromMetadata(DatabaseMetaData metaData, Connection connection, String tableName) 
+            throws java.sql.SQLException {
+        try (ResultSet rs = metaData.getPrimaryKeys(connection.getCatalog(), connection.getSchema(), tableName)) {
+            if (rs.next()) {
+                String columnName = rs.getString("COLUMN_NAME");
+                // Check if there are multiple primary key columns (composite key)
+                if (rs.next()) {
+                    log.warn("Table {} has composite primary key, using first column: {}", tableName, columnName);
+                }
+                return columnName;
+            }
+        }
+        return null;
     }
 
     /**
@@ -101,20 +274,21 @@ public class SnapshotEngine {
         Map<String, TableSnapshot> snapshots = new LinkedHashMap<>();
 
         for (String table : tables) {
+            String idColumn = getIdColumnForTable(table);
             TableSnapshot snapshot = new TableSnapshot(table);
-            snapshot.setMaxId(getMaxId(table));
+            snapshot.setMaxId(getMaxId(table, idColumn));
             snapshot.setRowCount(getRowCount(table));
 
             // Capture full row data if enabled
             if (captureFullRows) {
-                Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table);
+                Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table, idColumn);
                 snapshot.setRowsByPrimaryKey(rowData);
             }
 
             snapshots.put(table, snapshot);
-            log.debug("Before snapshot for {}: maxId={}, rowCount={}, rowDataSize={}",
+            log.debug("Before snapshot for {}: maxId={}, rowCount={}, rowDataSize={}, idColumn={}",
                 table, snapshot.getMaxId(), snapshot.getRowCount(),
-                snapshot.getRowsByPrimaryKey().size());
+                snapshot.getRowsByPrimaryKey().size(), idColumn);
         }
 
         return snapshots;
@@ -130,20 +304,21 @@ public class SnapshotEngine {
         Map<String, TableSnapshot> snapshots = new LinkedHashMap<>();
 
         for (String table : tables) {
+            String idColumn = getIdColumnForTable(table);
             TableSnapshot snapshot = new TableSnapshot(table);
-            snapshot.setMaxId(getMaxId(table));
+            snapshot.setMaxId(getMaxId(table, idColumn));
             snapshot.setRowCount(getRowCount(table));
 
             // Capture full row data if enabled
             if (captureFullRows) {
-                Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table);
+                Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table, idColumn);
                 snapshot.setRowsByPrimaryKey(rowData);
             }
 
             snapshots.put(table, snapshot);
-            log.debug("After snapshot for {}: maxId={}, rowCount={}, rowDataSize={}",
+            log.debug("After snapshot for {}: maxId={}, rowCount={}, rowDataSize={}, idColumn={}",
                 table, snapshot.getMaxId(), snapshot.getRowCount(),
-                snapshot.getRowsByPrimaryKey().size());
+                snapshot.getRowsByPrimaryKey().size(), idColumn);
         }
 
         return snapshots;
@@ -164,6 +339,7 @@ public class SnapshotEngine {
         allTables.addAll(after.keySet());
 
         for (String table : allTables) {
+            String idColumn = getIdColumnForTable(table);
             TableSnapshot beforeSnap = before.get(table);
             TableSnapshot afterSnap = after.get(table);
 
@@ -196,18 +372,18 @@ public class SnapshotEngine {
 
             // Fetch actual new row data if there are new rows
             if (newRows > 0) {
-                List<Map<String, Object>> newRowsData = fetchNewRows(table, beforeMaxId, afterMaxId);
+                List<Map<String, Object>> newRowsData = fetchNewRows(table, idColumn, beforeMaxId, afterMaxId);
                 diff.setNewRowsData(table, newRowsData);
             }
 
             // Compute modifications if full row data is available
             if (beforeSnap != null && afterSnap != null
                 && beforeSnap.hasRowData() && afterSnap.hasRowData()) {
-                computeModifications(diff, table, beforeSnap, afterSnap);
+                computeModifications(diff, table, idColumn, beforeSnap, afterSnap);
             }
 
-            log.debug("Diff for {}: newRows={}, deletedRows={}, modifiedRows={}",
-                table, newRows, deletedRows, diff.getModifiedRowCount(table));
+            log.debug("Diff for {}: newRows={}, deletedRows={}, modifiedRows={}, idColumn={}",
+                table, newRows, deletedRows, diff.getModifiedRowCount(table), idColumn);
         }
 
         return diff;
@@ -216,12 +392,12 @@ public class SnapshotEngine {
     /**
      * Gets the MAX(ID) for a table.
      */
-    private Long getMaxId(String table) {
+    private Long getMaxId(String table, String idColumn) {
         try {
-            String sql = "SELECT MAX(" + idColumnName + ") FROM " + table;
+            String sql = "SELECT MAX(" + idColumn + ") FROM " + table;
             return jdbcTemplate.queryForObject(sql, Long.class);
         } catch (Exception e) {
-            log.warn("Failed to get max ID for table {}: {}", table, e.getMessage());
+            log.warn("Failed to get max ID for table {} (column {}): {}", table, idColumn, e.getMessage());
             return 0L;
         }
     }
@@ -242,11 +418,11 @@ public class SnapshotEngine {
     /**
      * Fetches new rows between the before and after max IDs.
      */
-    private List<Map<String, Object>> fetchNewRows(String table, long beforeMaxId, long afterMaxId) {
+    private List<Map<String, Object>> fetchNewRows(String table, String idColumn, long beforeMaxId, long afterMaxId) {
         try {
             String sql = "SELECT * FROM " + table +
-                " WHERE " + idColumnName + " > ? AND " + idColumnName + " <= ?" +
-                " ORDER BY " + idColumnName;
+                " WHERE " + idColumn + " > ? AND " + idColumn + " <= ?" +
+                " ORDER BY " + idColumn;
             return jdbcTemplate.queryForList(sql, beforeMaxId, afterMaxId);
         } catch (Exception e) {
             log.warn("Failed to fetch new rows for table {}: ", table, e.getMessage());
@@ -257,17 +433,17 @@ public class SnapshotEngine {
     /**
      * Fetches all rows indexed by primary key.
      */
-    private Map<Object, Map<String, Object>> fetchAllRowsIndexedByPK(String table) {
+    private Map<Object, Map<String, Object>> fetchAllRowsIndexedByPK(String table, String idColumn) {
         Map<Object, Map<String, Object>> result = new LinkedHashMap<>();
 
         try {
-            String sql = "SELECT * FROM " + table + " ORDER BY " + idColumnName;
+            String sql = "SELECT * FROM " + table + " ORDER BY " + idColumn;
             List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql);
 
             int limit = Math.min(rows.size(), maxRowsToCapture);
             for (int i = 0; i < limit; i++) {
                 Map<String, Object> row = rows.get(i);
-                Object pkValue = getValueCaseInsensitive(row, idColumnName);
+                Object pkValue = getValueCaseInsensitive(row, idColumn);
                 if (pkValue != null) {
                     result.put(pkValue, row);
                 }
@@ -294,7 +470,7 @@ public class SnapshotEngine {
     /**
      * Computes row modifications by comparing before/after row data.
      */
-    private void computeModifications(SnapshotDiff diff, String table,
+    private void computeModifications(SnapshotDiff diff, String table, String idColumn,
                                       TableSnapshot beforeSnap,
                                       TableSnapshot afterSnap) {
         Map<Object, Map<String, Object>> beforeRows = beforeSnap.getRowsByPrimaryKey();
@@ -370,5 +546,13 @@ public class SnapshotEngine {
             || schema.equals("SYS")
             || schema.equals("SYSTEM")
             || schema.equals("PERFORMANCE_SCHEMA");
+    }
+    
+    /**
+     * Clears the primary key detection cache.
+     * Useful for testing or when database schema changes.
+     */
+    public void clearPrimaryKeyCache() {
+        tablePrimaryKeyCache.clear();
     }
 }
