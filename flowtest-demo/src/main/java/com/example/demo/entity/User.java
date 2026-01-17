@@ -1,24 +1,23 @@
 package com.example.demo.entity;
 
-import javax.persistence.Table;
-import javax.persistence.Enumerated;
-import javax.persistence.EnumType;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * User entity.
  */
-@Table(name = "t_user")
+@TableName("t_user")
 public class User {
 
+    @TableId(type = IdType.AUTO)
     private Long id;
     private String username;
     private String email;
     private BigDecimal balance;
-    @Enumerated(EnumType.STRING)
     private UserLevel level;
-    @Enumerated(EnumType.STRING)
     private UserStatus status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

@@ -1,15 +1,18 @@
 package com.example.demo.entity;
 
-import javax.persistence.Table;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * Order entity.
  */
-@Table(name = "t_order")
+@TableName("t_order")
 public class Order {
 
+    @TableId(type = IdType.AUTO)
     private Long id;
     private Long userId;
     private Long productId;

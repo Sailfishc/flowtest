@@ -3,16 +3,13 @@ package com.example.demo.service;
 import com.example.demo.entity.Order;
 import com.example.demo.entity.Product;
 import com.example.demo.entity.User;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.support.GeneratedKeyHolder;
-import org.springframework.jdbc.support.KeyHolder;
+import com.example.demo.mapper.OrderMapper;
+import com.example.demo.mapper.ProductMapper;
+import com.example.demo.mapper.UserMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.PreparedStatement;
-import java.sql.Statement;
-import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
 /**
@@ -21,10 +18,14 @@ import java.time.LocalDateTime;
 @Service
 public class OrderService {
 
-    private final JdbcTemplate jdbcTemplate;
+    private final UserMapper userMapper;
+    private final ProductMapper productMapper;
+    private final OrderMapper orderMapper;
 
-    public OrderService(JdbcTemplate jdbcTemplate) {
-        this.jdbcTemplate = jdbcTemplate;
+    public OrderService(UserMapper userMapper, ProductMapper productMapper, OrderMapper orderMapper) {
+        this.userMapper = userMapper;
+        this.productMapper = productMapper;
+        this.orderMapper = orderMapper;
     }
 
     /**
@@ -39,30 +40,10 @@ public class OrderService {
     @Transactional
     public Order createOrder(Long userId, Long productId, int quantity) {
         // Get user
-        User user = jdbcTemplate.queryForObject(
-            "SELECT * FROM t_user WHERE id = ?",
-            (rs, rowNum) -> {
-                User u = new User();
-                u.setId(rs.getLong("id"));
-                u.setBalance(rs.getBigDecimal("balance"));
-                u.setLevel(User.UserLevel.valueOf(rs.getString("level")));
-                return u;
-            },
-            userId
-        );
+        User user = userMapper.selectById(userId);
 
         // Get product
-        Product product = jdbcTemplate.queryForObject(
-            "SELECT * FROM t_product WHERE id = ?",
-            (rs, rowNum) -> {
-                Product p = new Product();
-                p.setId(rs.getLong("id"));
-                p.setPrice(rs.getBigDecimal("price"));
-                p.setStock(rs.getInt("stock"));
-                return p;
-            },
-            productId
-        );
+        Product product = productMapper.selectById(productId);
 
         // Calculate total
         BigDecimal totalAmount = product.getPrice().multiply(BigDecimal.valueOf(quantity));
@@ -80,10 +61,8 @@ public class OrderService {
         }
 
         // Deduct balance
-        jdbcTemplate.update(
-            "UPDATE t_user SET balance = balance - ? WHERE id = ?",
-            totalAmount, userId
-        );
+        user.setBalance(user.getBalance().subtract(totalAmount));
+        userMapper.updateById(user);
 
         // Create order
         Order order = new Order();
@@ -94,37 +73,7 @@ public class OrderService {
         order.setStatus(Order.OrderStatus.CREATED);
         order.setCreatedAt(LocalDateTime.now());
 
-        KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbcTemplate.update(connection -> {
-            PreparedStatement ps = connection.prepareStatement(
-                "INSERT INTO t_order (user_id, product_id, quantity, total_amount, status, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                Statement.RETURN_GENERATED_KEYS
-            );
-            ps.setLong(1, order.getUserId());
-            ps.setLong(2, order.getProductId());
-            ps.setInt(3, order.getQuantity());
-            ps.setBigDecimal(4, order.getTotalAmount());
-            ps.setString(5, order.getStatus().name());
-            ps.setTimestamp(6, Timestamp.valueOf(order.getCreatedAt()));
-            return ps;
-        }, keyHolder);
-
-        Number generatedId = null;
-        if (keyHolder.getKeys() != null && !keyHolder.getKeys().isEmpty()) {
-            Object idValue = keyHolder.getKeys().get("ID");
-            if (idValue == null) {
-                idValue = keyHolder.getKeys().get("id");
-            }
-            if (idValue instanceof Number) {
-                generatedId = (Number) idValue;
-            }
-        }
-        if (generatedId == null && keyHolder.getKey() != null) {
-            generatedId = keyHolder.getKey();
-        }
-        if (generatedId != null) {
-            order.setId(generatedId.longValue());
-        }
+        orderMapper.insert(order);
 
         return order;
     }

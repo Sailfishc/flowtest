@@ -11,6 +11,13 @@ spring:
     init:
       mode: always
 
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    db-config:
+      id-type: auto
+
 flowtest:
   cleanup-mode: TRANSACTION
   seed: 12345

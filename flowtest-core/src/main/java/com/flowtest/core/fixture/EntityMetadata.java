@@ -49,10 +49,10 @@ public class EntityMetadata {
 
     /**
      * Resolves the table name for the entity.
-     * Priority: @Table(name) > @Entity(name) > camelCase to snake_case
+     * Priority: @Table(name) > @TableName(value) > @Entity(name) > camelCase to snake_case
      */
     private String resolveTableName(Class<?> clazz) {
-        // Try @Table annotation
+        // Try JPA @Table annotation
         String tableName = getAnnotationValue(clazz, "javax.persistence.Table", "name");
         if (tableName == null) {
             tableName = getAnnotationValue(clazz, "jakarta.persistence.Table", "name");
@@ -61,7 +61,13 @@ public class EntityMetadata {
             return tableName;
         }
 
-        // Try @Entity annotation
+        // Try MyBatis-Plus @TableName annotation
+        tableName = getAnnotationValue(clazz, "com.baomidou.mybatisplus.annotation.TableName", "value");
+        if (tableName != null && !tableName.isEmpty()) {
+            return tableName;
+        }
+
+        // Try JPA @Entity annotation
         String entityName = getAnnotationValue(clazz, "javax.persistence.Entity", "name");
         if (entityName == null) {
             entityName = getAnnotationValue(clazz, "jakarta.persistence.Entity", "name");
@@ -76,12 +82,21 @@ public class EntityMetadata {
 
     /**
      * Resolves the ID field for the entity.
-     * Looks for @Id annotation or field named "id".
+     * Looks for @Id or @TableId annotation or field named "id".
      */
     private Field resolveIdField(Class<?> clazz) {
+        // Try JPA @Id annotation
         for (Field field : getAllFields(clazz)) {
             if (hasAnnotation(field, "javax.persistence.Id") ||
                 hasAnnotation(field, "jakarta.persistence.Id")) {
+                field.setAccessible(true);
+                return field;
+            }
+        }
+
+        // Try MyBatis-Plus @TableId annotation
+        for (Field field : getAllFields(clazz)) {
+            if (hasAnnotation(field, "com.baomidou.mybatisplus.annotation.TableId")) {
                 field.setAccessible(true);
                 return field;
             }
@@ -101,9 +116,10 @@ public class EntityMetadata {
 
     /**
      * Resolves the column name for a field.
-     * Priority: @Column(name) > camelCase to snake_case
+     * Priority: @Column(name) > @TableField(value) > camelCase to snake_case
      */
     private String resolveColumnName(Field field) {
+        // Try JPA @Column annotation
         String columnName = getAnnotationValue(field, "javax.persistence.Column", "name");
         if (columnName == null) {
             columnName = getAnnotationValue(field, "jakarta.persistence.Column", "name");
@@ -111,6 +127,13 @@ public class EntityMetadata {
         if (columnName != null && !columnName.isEmpty()) {
             return columnName;
         }
+
+        // Try MyBatis-Plus @TableField annotation
+        columnName = getAnnotationValue(field, "com.baomidou.mybatisplus.annotation.TableField", "value");
+        if (columnName != null && !columnName.isEmpty()) {
+            return columnName;
+        }
+
         return camelToSnake(field.getName());
     }
 
@@ -126,6 +149,11 @@ public class EntityMetadata {
         }
         if (hasAnnotation(field, "javax.persistence.Transient") ||
             hasAnnotation(field, "jakarta.persistence.Transient")) {
+            return true;
+        }
+        // Check MyBatis-Plus @TableField(exist = false)
+        String existValue = getAnnotationValue(field, "com.baomidou.mybatisplus.annotation.TableField", "exist");
+        if ("false".equals(existValue)) {
             return true;
         }
         return false;
