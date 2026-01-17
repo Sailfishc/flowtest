@@ -1,5 +1,6 @@
 package com.example.demo.entity;
 
+import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.math.BigDecimal;
@@ -11,7 +12,7 @@ import java.time.LocalDateTime;
 @TableName("t_user_profit_detail")
 public class UserProfitDetail {
 
-    @TableId
+    @TableId(type = IdType.INPUT)
     private String bsnId;
     private String tntInstId;
     private String ipId;

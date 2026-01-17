@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS t_audit_log (
     message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-create TABLE `t_asset_info` (
+CREATE TABLE IF NOT EXISTS `t_asset_info` (
                                      `tnt_inst_id`        VARCHAR(16) NOT NULL comment '租户实例ID',
                                      `bsn_id`            VARCHAR(64) NOT NULL comment '业务ID',
                                      `ip_id`             VARCHAR(32) NOT NULL comment 'IP ID',
@@ -125,8 +125,8 @@ CREATE TABLE IF NOT EXISTS `t_user_info` (
                                      `gmt_create`        datetime NOT NULL comment '创建时间',
                                      `gmt_modified`      datetime NOT NULL comment '修改时间',
                                      PRIMARY KEY(`bsn_id`),
-                                     UNIQUE KEY `uk_tnt_ip_role_out_channel_env` (`ip_role_id`, `out_channel_id`, `env`),
-                                     key `idx_status_env_split_id_execute_date_run_time` (`status`, `env`, `split_id`, `next_execute_date`, `next_run_time`)
+                                     UNIQUE KEY `uk_user_ip_role_out_channel_env` (`ip_role_id`, `out_channel_id`, `env`),
+                                     key `idx_user_status_env_split_execute_run` (`status`, `env`, `split_id`, `next_execute_date`, `next_run_time`)
 ) comment = '用户信息表';
 
 

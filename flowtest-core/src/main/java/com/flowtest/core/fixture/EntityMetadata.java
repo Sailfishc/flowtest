@@ -309,6 +309,8 @@ public class EntityMetadata {
                 return num.intValue();
             } else if (targetType == Short.class || targetType == short.class) {
                 return num.shortValue();
+            } else if (targetType == String.class) {
+                return num.toString();
             }
         }
         return id;

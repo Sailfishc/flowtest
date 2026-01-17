@@ -70,14 +70,21 @@ public class JdbcEntityPersister implements EntityPersister {
             }
         });
 
+        // Only set generated ID if the entity's ID is not already set
+        Object existingId = metadata.getId(entity);
+        if (existingId != null) {
+            log.debug("Entity already has ID set: {}", existingId);
+            return existingId;
+        }
+
         if (generatedId != null) {
             metadata.setId(entity, generatedId);
             log.debug("Generated ID: {}", generatedId);
             return generatedId;
         }
 
-        // If no key was generated, return the existing ID
-        return metadata.getId(entity);
+        // If no key was generated, return null
+        return null;
     }
 
     @Override
