@@ -71,7 +71,8 @@
       "WebSearch",
       "Bash(git init:*)",
       "Bash(git config:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(git tag:*)"
     ]
   }
 }
