@@ -55,6 +55,15 @@ data
       children
         - label flowtest-core
           desc 核心框架
+          children
+            - label 测试流程
+              desc TestFlow, ArrangeBuilder, ActPhase, AssertPhase
+            - label 数据填充
+              desc AutoFiller, InstancioFiller, Traits
+            - label 快照引擎
+              desc SnapshotEngine, SnapshotDiff, TableSnapshot
+            - label 生命周期
+              desc CleanupStrategy, CleanupMode
         - label flowtest-assertj-db
           desc AssertJ-DB 集成
         - label flowtest-junit5
@@ -63,6 +72,281 @@ data
           desc Spring Boot 自动配置
         - label flowtest-demo
           desc 示例应用
+```
+
+## flowtest-core 核心模块
+
+flowtest-core 是 FlowTest 框架的核心模块，提供了完整的测试基础设施，包括测试流程管理、数据自动填充、数据库快照差异检测、生命周期清理等功能。
+
+### 核心组件
+
+#### 1. TestFlow - 测试流程入口
+
+`TestFlow` 是框架的主入口点，提供流畅的 DSL 接口来组织测试。
+
+```java
+@Autowired TestFlow flow;
+
+flow.arrange()
+    .add(User.class, UserTraits.vip())
+    .persist()
+    .act(() -> service.doSomething())
+    .assertThat()
+    .noException();
+```
+
+**主要方法：**
+- `arrange()` - 开始 Arrange 阶段，返回 `ArrangeBuilder`
+- `get(Class)` / `get(String, Class)` / `getAll(Class)` - 获取上下文中的实体
+- `cleanup()` - 手动清理测试数据
+
+#### 2. ArrangeBuilder - 准备阶段构建器
+
+用于创建和持久化测试实体。
+
+**添加单个实体：**
+```java
+flow.arrange()
+    .add(User.class, UserTraits.vip())                    // 使用 Trait
+    .add("product", Product.class, ProductTraits.price(100)) // 使用别名
+    .persist();
+```
+
+**批量添加实体：**
+```java
+flow.arrange()
+    .addMany(User.class, 5, UserTraits.normal()) // 添加 5 个普通用户
+    .persist();
+```
+
+**使用 Lambda 配置：**
+```java
+flow.arrange()
+    .add(User.class, user -> {
+        user.setName("John");
+        user.setLevel(UserLevel.VIP);
+    })
+    .addMany(Order.class, 3, (order, index) -> {
+        order.setOrderNumber("ORD-" + index);
+    })
+    .persist();
+```
+
+**只构建不持久化（用于调试）：**
+```java
+flow.arrange()
+    .add(User.class, UserTraits.vip())
+    .build(); // 只构建，不存数据库
+```
+
+#### 3. ActPhase - 执行阶段
+
+执行被测业务逻辑并捕获结果。
+
+```java
+.act(() -> orderService.createOrder(userId, productId))     // 无返回值
+.act(() -> orderService.calculateTotal(orderId))            // 有返回值
+```
+
+#### 4. AssertBuilder - 断言阶段构建器
+
+提供丰富的断言 API，包括异常断言、返回值断言、数据库变更断言等。
+
+**异常断言：**
+```java
+.assertThat()
+    .exception(InsufficientBalanceException.class)
+    .hasMessageContaining("余额不足")
+    .and().dbChanges(db -> db.table("t_order").hasNoChanges());
+```
+
+**返回值断言：**
+```java
+.assertThat()
+    .noException()
+    .returnValue(order -> {
+        assertThat(order.getTotalAmount()).isEqualByComparingTo("200.00");
+    });
+```
+
+**Fluent Result 断言：**
+```java
+.assertThat()
+    .result()
+        .has(Order::getStatus, OrderStatus.CREATED)
+        .has(Order::getTotalAmount, BigDecimal.valueOf(180))
+    .and().created(Order.class);
+```
+
+**实体状态断言：**
+```java
+.assertThat()
+    .entity(User.class)
+        .has(User::getBalance, BigDecimal.valueOf(800))  // 断言 arrange 的实体在 act 后的状态
+    .and().created(Order.class);
+```
+
+**新增行断言：**
+```java
+.assertThat()
+    .newRow(Order.class)
+        .matching("user_id", userId)
+        .has(Order::getStatus, OrderStatus.CREATED)
+    .and().noException();
+```
+
+**数据库变更断言：**
+```java
+.assertThat()
+    .dbChanges(db -> db
+        .table("t_order").hasNewRows(1)
+        .table("t_user").hasModifiedRows(1)
+            .modifiedRow(0)
+                .column("balance").changedFrom(1000.00).to(800.00)
+        .table("t_product").hasDeletedRows(1)
+    );
+```
+
+**快捷断言方法：**
+```java
+.assertThat()
+    .noException()
+    .created(Order.class)              // 等价于 .dbChanges(db -> db.table("t_order").hasNewRows(1))
+    .created(Order.class, 3)            // 断言创建 3 行
+    .modified(User.class)               // 断言修改 1 行
+    .modified(User.class, 2)            // 断言修改 2 行
+    .deleted(Product.class)             // 断言删除 1 行
+    .unchanged(Order.class)             // 断言无变更
+    .onlyChanged(Order.class, User.class) // 只有这两个表有变更
+    .noDatabaseChanges();              // 所有被监控的表都无变更
+```
+
+#### 5. DataFiller - 数据自动填充
+
+`DataFiller` 接口用于自动填充实体字段，支持两种实现：
+
+**AutoFiller（基于 EasyRandom）：**
+```java
+// 使用默认配置
+AutoFiller filler = new AutoFiller();
+
+// 使用自定义配置
+AutoFiller customFiller = AutoFiller.builder()
+    .seed(12345L)
+    .stringLengthRange(5, 10)
+    .collectionSizeRange(0, 3)
+    .randomizationDepth(2)
+    .build();
+```
+
+**InstancioFiller（基于 Instancio，可选）：**
+```java
+InstancioFiller filler = InstancioFiller.builder()
+    .withSettings(settings -> settings.maxDepth(3))
+    .build();
+```
+
+#### 6. Traits - 可组合的实体特征
+
+`Trait<T>` 是函数式接口，用于定义可复用、可组合的实体配置。
+
+**定义 Trait：**
+```java
+public class UserTraits {
+    public static Trait<User> vip() {
+        return user -> user.setLevel(UserLevel.VIP);
+    }
+
+    public static Trait<User> balance(double amount) {
+        return user -> user.setBalance(BigDecimal.valueOf(amount));
+    }
+
+    // 组合 Trait
+    public static Trait<User> richVip() {
+        return Trait.compose(vip(), balance(10000.00));
+        // 或 return vip().and(balance(10000.00));
+    }
+}
+```
+
+**使用 Trait：**
+```java
+flow.arrange()
+    .add(User.class, UserTraits.richVip())
+    .add(User.class, UserTraits.normal(), UserTraits.balance(500.00))
+    .persist();
+```
+
+#### 7. SnapshotEngine - 数据库快照引擎
+
+`SnapshotEngine` 提供数据库表快照捕获和差异计算功能。
+
+**主要功能：**
+- 自动检测主键列（支持自定义）
+- 捕获完整行数据用于变更检测
+- 计算快照差异（新增、修改、删除）
+- 列出数据库中的所有用户表
+
+**配置主键列：**
+```java
+// 自动检测（默认，从数据库元数据获取）
+SnapshotEngine engine = new SnapshotEngine(dataSource);
+
+// 手动配置主键列
+engine.setTableIdColumn("t_user_info", "user_id");
+
+// 注册实体类（自动提取表名和主键列）
+engine.withEntityMetadata(User.class, Order.class);
+```
+
+#### 8. CleanupStrategy - 清理策略
+
+flowtest-core 提供四种清理策略，通过 `CleanupMode` 枚举指定。
+
+| 策略 | 适用场景 | 速度 | 数据隔离 |
+|------|----------|------|----------|
+| `TRANSACTION` | 默认，最常用 | ⭐⭐⭐⭐⭐ | 完全 |
+| `COMPENSATING` | 异步操作、REQUIRES_NEW 事务 | ⭐⭐⭐ | 完全 |
+| `SNAPSHOT_BASED` | 需要清理业务产生的数据 | ⭐⭐⭐ | 完全 |
+| `NONE` | 调试、手动检查 | N/A | 无 |
+
+**TRANSACTION（L1，默认）：**
+```java
+@Transactional  // Spring 自动回滚事务
+@Test
+void testWithTransaction() {
+    flow.arrange()...
+    // 测试完成后自动回滚
+}
+```
+
+**COMPENSATING（L2）：**
+```java
+@FlowTest(cleanup = CleanupMode.COMPENSATING)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Test
+void testWithCompensatingCleanup() {
+    // 测试完成后物理删除所有创建的实体
+}
+```
+
+**SNAPSHOT_BASED（L3）：**
+```java
+@FlowTest(cleanup = CleanupMode.SNAPSHOT_BASED)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Test
+void testWithSnapshotCleanup() {
+    // 测试完成后删除 persist() 和 act() 阶段创建的所有数据
+}
+```
+
+**NONE：**
+```java
+@FlowTest(cleanup = CleanupMode.NONE)
+@Test
+void testWithoutCleanup() {
+    // 数据保留，用于调试
+}
 ```
 
 ## 快速开始
@@ -408,7 +692,7 @@ void testWithFlowTestChanges() {
         changes.assertChanges()
             .hasNumberOfChanges(1)
             .changeOnTable("t_order").isCreation();
-        
+
         jdbcTemplate.update("DELETE FROM t_order WHERE id > ?", maxOrderId);
         flow.cleanup();
     }
