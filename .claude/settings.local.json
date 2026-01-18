@@ -69,7 +69,9 @@
       "mcp__plugin_serena_serena__think_about_task_adherence",
       "mcp__plugin_serena_serena__execute_shell_command",
       "WebSearch",
-      "Bash(git init:*)"
+      "Bash(git init:*)",
+      "Bash(git config:*)",
+      "Bash(curl:*)"
     ]
   }
 }

@@ -4,14 +4,14 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.github.sailfishc</groupId>
+    <groupId>com.github.Sailfishc</groupId>
     <artifactId>flowtest</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
     <name>FlowTest</name>
     <description>A Code-First Java integration testing framework with fluent DSL</description>
-    <url>https://github.com/sailfishc/flowtest</url>
+    <url>https://github.com/Sailfishc/flowtest</url>
 
     <licenses>
         <license>
@@ -24,14 +24,14 @@
         <developer>
             <id>sailfishc</id>
             <name>sailfishc</name>
-            <url>https://github.com/sailfishc</url>
+            <url>https://github.com/Sailfishc</url>
         </developer>
     </developers>
 
     <scm>
-        <connection>scm:git:git://github.com/sailfishc/flowtest.git</connection>
-        <developerConnection>scm:git:ssh://github.com:sailfishc/flowtest.git</developerConnection>
-        <url>https://github.com/sailfishc/flowtest</url>
+        <connection>scm:git:git://github.com/Sailfishc/flowtest.git</connection>
+        <developerConnection>scm:git:ssh://github.com:Sailfishc/flowtest.git</developerConnection>
+        <url>https://github.com/Sailfishc/flowtest</url>
     </scm>
 
     <modules>
@@ -77,32 +77,32 @@
 
             <!-- FlowTest modules -->
             <dependency>
-                <groupId>com.github.sailfishc</groupId>
+                <groupId>com.github.Sailfishc</groupId>
                 <artifactId>flowtest-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.github.sailfishc</groupId>
+                <groupId>com.github.Sailfishc</groupId>
                 <artifactId>flowtest-assertj-db</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.github.sailfishc</groupId>
+                <groupId>com.github.Sailfishc</groupId>
                 <artifactId>flowtest-junit5</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.github.sailfishc</groupId>
+                <groupId>com.github.Sailfishc</groupId>
                 <artifactId>flowtest-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.github.sailfishc</groupId>
+                <groupId>com.github.Sailfishc</groupId>
                 <artifactId>flowtest-mockito</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.github.sailfishc</groupId>
+                <groupId>com.github.Sailfishc</groupId>
                 <artifactId>flowtest-testng</artifactId>
                 <version>${project.version}</version>
             </dependency>
