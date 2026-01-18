@@ -52,8 +52,10 @@
         <!-- Dependency versions -->
         <spring-boot.version>2.7.18</spring-boot.version>
         <spring.version>5.3.31</spring.version>
-        <easy-random.version>5.0.0</easy-random.version>
-        <instancio.version>5.2.1</instancio.version>
+        <!-- EasyRandom 4.3.0 is the last version supporting Java 8 -->
+        <easy-random.version>4.3.0</easy-random.version>
+        <!-- Instancio 3.x is the last version supporting Java 8 -->
+        <instancio.version>3.7.1</instancio.version>
         <junit-jupiter.version>5.9.3</junit-jupiter.version>
         <assertj-db.version>2.0.2</assertj-db.version>
         <assertj-core.version>3.24.2</assertj-core.version>
