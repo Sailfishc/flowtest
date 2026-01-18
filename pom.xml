@@ -41,7 +41,6 @@
         <module>flowtest-testng</module>
         <module>flowtest-mockito</module>
         <module>flowtest-spring-boot-starter</module>
-        <module>flowtest-demo</module>
     </modules>
 
     <properties>

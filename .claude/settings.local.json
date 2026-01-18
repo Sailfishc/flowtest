@@ -14,7 +14,6 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push:*)",
-
       "Bash(mvn compile:*)",
       "Bash(mvn test:*)",
       "Bash(mvn install:*)",
@@ -25,7 +24,6 @@
       "Bash(mvn dependency:*)",
       "Bash(mvn versions:*)",
       "Bash(mvn help:*)",
-
       "Bash(ls:*)",
       "Bash(pwd)",
       "Bash(cat:*)",
@@ -40,19 +38,15 @@
       "Bash(which:*)",
       "Bash(java -version:*)",
       "Bash(mvn -version:*)",
-
       "Bash(git show:*)",
       "Bash(git grep:*)",
-
       "Bash(npm run test:*)",
       "Bash(npm run lint:*)",
       "Bash(npm run format:*)",
-
       "mcp__context7__resolve-library-id",
       "mcp__context7__query-docs",
       "mcp__plugin_context7_context7__resolve-library-id",
       "mcp__plugin_context7_context7__query-docs",
-
       "mcp__plugin_serena_serena__list_dir",
       "mcp__plugin_serena_serena__find_file",
       "mcp__plugin_serena_serena__read_file",
@@ -74,8 +68,8 @@
       "mcp__plugin_serena_serena__think_about_collected_information",
       "mcp__plugin_serena_serena__think_about_task_adherence",
       "mcp__plugin_serena_serena__execute_shell_command",
-
-      "WebSearch"
+      "WebSearch",
+      "Bash(git init:*)"
     ]
   }
 }
