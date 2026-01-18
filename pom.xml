@@ -4,13 +4,35 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>com.flowtest</groupId>
-    <artifactId>flowtest-parent</artifactId>
+    <groupId>com.github.sailfishc</groupId>
+    <artifactId>flowtest</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <packaging>pom</packaging>
 
-    <name>FlowTest Parent</name>
+    <name>FlowTest</name>
     <description>A Code-First Java integration testing framework with fluent DSL</description>
+    <url>https://github.com/sailfishc/flowtest</url>
+
+    <licenses>
+        <license>
+            <name>Apache License, Version 2.0</name>
+            <url>https://www.apache.org/licenses/LICENSE-2.0</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>sailfishc</id>
+            <name>sailfishc</name>
+            <url>https://github.com/sailfishc</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/sailfishc/flowtest.git</connection>
+        <developerConnection>scm:git:ssh://github.com:sailfishc/flowtest.git</developerConnection>
+        <url>https://github.com/sailfishc/flowtest</url>
+    </scm>
 
     <modules>
         <module>flowtest-core</module>
@@ -56,32 +78,32 @@
 
             <!-- FlowTest modules -->
             <dependency>
-                <groupId>com.flowtest</groupId>
+                <groupId>com.github.sailfishc</groupId>
                 <artifactId>flowtest-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.flowtest</groupId>
+                <groupId>com.github.sailfishc</groupId>
                 <artifactId>flowtest-assertj-db</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.flowtest</groupId>
+                <groupId>com.github.sailfishc</groupId>
                 <artifactId>flowtest-junit5</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.flowtest</groupId>
+                <groupId>com.github.sailfishc</groupId>
                 <artifactId>flowtest-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.flowtest</groupId>
+                <groupId>com.github.sailfishc</groupId>
                 <artifactId>flowtest-mockito</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.flowtest</groupId>
+                <groupId>com.github.sailfishc</groupId>
                 <artifactId>flowtest-testng</artifactId>
                 <version>${project.version}</version>
             </dependency>
@@ -171,8 +193,43 @@
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-source-plugin</artifactId>
                     <version>3.3.0</version>
+                    <executions>
+                        <execution>
+                            <id>attach-sources</id>
+                            <goals>
+                                <goal>jar-no-fork</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>3.6.0</version>
+                    <executions>
+                        <execution>
+                            <id>attach-javadocs</id>
+                            <goals>
+                                <goal>jar</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                    <configuration>
+                        <doclint>none</doclint>
+                        <failOnError>false</failOnError>
+                    </configuration>
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+            </plugin>
+        </plugins>
     </build>
 </project>

@@ -5,8 +5,8 @@
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
-        <groupId>com.flowtest</groupId>
-        <artifactId>flowtest-parent</artifactId>
+        <groupId>com.github.sailfishc</groupId>
+        <artifactId>flowtest</artifactId>
         <version>1.0.0-SNAPSHOT</version>
     </parent>
 
@@ -19,15 +19,15 @@
     <dependencies>
         <!-- FlowTest modules -->
         <dependency>
-            <groupId>com.flowtest</groupId>
+            <groupId>com.github.sailfishc</groupId>
             <artifactId>flowtest-core</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.flowtest</groupId>
+            <groupId>com.github.sailfishc</groupId>
             <artifactId>flowtest-junit5</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.flowtest</groupId>
+            <groupId>com.github.sailfishc</groupId>
             <artifactId>flowtest-assertj-db</artifactId>
         </dependency>
 
