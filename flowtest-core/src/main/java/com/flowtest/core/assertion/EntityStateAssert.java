@@ -1,13 +1,10 @@
 package com.flowtest.core.assertion;
 
 import com.flowtest.core.assertion.ResultAssert.SerializableFunction;
+import com.flowtest.core.util.ColumnNameResolver;
+import com.flowtest.core.util.ValueComparator;
 
-import java.io.Serializable;
-import java.lang.invoke.SerializedLambda;
-import java.lang.reflect.Method;
-import java.math.BigDecimal;
 import java.util.Map;
-import java.util.Objects;
 
 /**
  * Fluent assertion for entity state after act() execution.
@@ -53,10 +50,11 @@ public class EntityStateAssert<E, R> {
                 "Entity may not have been modified during act().");
         }
 
-        String columnName = extractColumnName(getter);
-        Object actual = getValueCaseInsensitive(columnName);
+        String columnName = ColumnNameResolver.extractColumnName(getter);
+        Object actual = ColumnNameResolver.getValueCaseInsensitive(
+            rowData, columnName, "entity " + entityClass.getSimpleName());
 
-        if (!valuesEqual(expected, actual)) {
+        if (!ValueComparator.valuesEqual(expected, actual)) {
             throw new AssertionError(String.format(
                 "Entity %s column '%s': expected <%s> but was <%s>",
                 entityClass.getSimpleName(), columnName, expected, actual));
@@ -78,9 +76,10 @@ public class EntityStateAssert<E, R> {
                 "Entity may not have been modified during act().");
         }
 
-        Object actual = getValueCaseInsensitive(columnName);
+        Object actual = ColumnNameResolver.getValueCaseInsensitive(
+            rowData, columnName, "entity " + entityClass.getSimpleName());
 
-        if (!valuesEqual(expected, actual)) {
+        if (!ValueComparator.valuesEqual(expected, actual)) {
             throw new AssertionError(String.format(
                 "Entity %s column '%s': expected <%s> but was <%s>",
                 entityClass.getSimpleName(), columnName, expected, actual));
@@ -100,130 +99,5 @@ public class EntityStateAssert<E, R> {
      */
     public Map<String, Object> getRowData() {
         return rowData;
-    }
-
-    /**
-     * Gets value from row data with case-insensitive column name lookup.
-     */
-    private Object getValueCaseInsensitive(String columnName) {
-        // Try exact match first
-        if (rowData.containsKey(columnName)) {
-            return rowData.get(columnName);
-        }
-
-        // Try case-insensitive match
-        for (Map.Entry<String, Object> entry : rowData.entrySet()) {
-            if (entry.getKey().equalsIgnoreCase(columnName)) {
-                return entry.getValue();
-            }
-        }
-
-        throw new AssertionError(String.format(
-            "Column '%s' not found in entity %s. Available columns: %s",
-            columnName, entityClass.getSimpleName(), rowData.keySet()));
-    }
-
-    /**
-     * Extracts the column name from a method reference.
-     * Converts getter method name to snake_case column name.
-     */
-    private String extractColumnName(SerializableFunction<E, ?> getter) {
-        try {
-            Method writeReplace = getter.getClass().getDeclaredMethod("writeReplace");
-            writeReplace.setAccessible(true);
-            SerializedLambda lambda = (SerializedLambda) writeReplace.invoke(getter);
-
-            String methodName = lambda.getImplMethodName();
-            String fieldName;
-
-            // Convert getXxx to xxx or isXxx to xxx
-            if (methodName.startsWith("get") && methodName.length() > 3) {
-                fieldName = Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4);
-            } else if (methodName.startsWith("is") && methodName.length() > 2) {
-                fieldName = Character.toLowerCase(methodName.charAt(2)) + methodName.substring(3);
-            } else {
-                fieldName = methodName;
-            }
-
-            // Convert camelCase to snake_case
-            return camelToSnake(fieldName);
-        } catch (Exception e) {
-            return "unknown";
-        }
-    }
-
-    /**
-     * Converts camelCase to snake_case.
-     */
-    private String camelToSnake(String camelCase) {
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < camelCase.length(); i++) {
-            char c = camelCase.charAt(i);
-            if (Character.isUpperCase(c)) {
-                if (i > 0) {
-                    result.append('_');
-                }
-                result.append(Character.toLowerCase(c));
-            } else {
-                result.append(c);
-            }
-        }
-        return result.toString();
-    }
-
-    /**
-     * Compares values with type coercion for numbers and enums.
-     */
-    private boolean valuesEqual(Object expected, Object actual) {
-        if (expected == null && actual == null) {
-            return true;
-        }
-        if (expected == null || actual == null) {
-            return false;
-        }
-
-        // Handle BigDecimal comparison
-        if (expected instanceof BigDecimal || actual instanceof BigDecimal) {
-            BigDecimal expectedBd = toBigDecimal(expected);
-            BigDecimal actualBd = toBigDecimal(actual);
-            if (expectedBd != null && actualBd != null) {
-                return expectedBd.compareTo(actualBd) == 0;
-            }
-        }
-
-        // Handle numeric comparison
-        if (expected instanceof Number && actual instanceof Number) {
-            return ((Number) expected).doubleValue() == ((Number) actual).doubleValue();
-        }
-
-        // Handle enum comparison
-        if (expected instanceof Enum && actual instanceof Enum) {
-            return expected == actual;
-        }
-
-        // String comparison for enums
-        if (expected instanceof String && actual instanceof Enum) {
-            return expected.equals(((Enum<?>) actual).name());
-        }
-        if (expected instanceof Enum && actual instanceof String) {
-            return ((Enum<?>) expected).name().equals(actual);
-        }
-
-        return Objects.equals(expected, actual);
-    }
-
-    private BigDecimal toBigDecimal(Object value) {
-        if (value instanceof BigDecimal) {
-            return (BigDecimal) value;
-        } else if (value instanceof Number) {
-            return BigDecimal.valueOf(((Number) value).doubleValue());
-        } else if (value instanceof String) {
-            try {
-                return new BigDecimal((String) value);
-            } catch (NumberFormatException e) {
-                return null;
-            }
-        }
-        return null;
     }
 }

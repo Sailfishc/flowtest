@@ -25,6 +25,7 @@ public class AssertPhase<T> {
     private SnapshotEngine snapshotEngine;
 
     private boolean executed = false;
+    private boolean snapshotDiffComputed = false;
     private T result;
     private Throwable thrownException;
 
@@ -61,8 +62,11 @@ public class AssertPhase<T> {
 
         // Take before snapshot
         if (snapshotEngine != null) {
-            for (String table : snapshotEngine.listTableNames()) {
-                context.addWatchedTable(table);
+            // Only auto-detect tables if no tables were explicitly configured via persist()
+            if (context.getWatchedTables().isEmpty()) {
+                for (String table : snapshotEngine.listTableNames()) {
+                    context.addWatchedTable(table);
+                }
             }
             if (!context.getWatchedTables().isEmpty()) {
                 Map<String, TableSnapshot> beforeSnapshot = snapshotEngine.takeBeforeSnapshot(context.getWatchedTables());
@@ -84,8 +88,12 @@ public class AssertPhase<T> {
 
     /**
      * Takes the after snapshot and computes the diff.
+     * Cached: only computed once per test execution.
      */
     void computeSnapshotDiff() {
+        if (snapshotDiffComputed) {
+            return;
+        }
         if (snapshotEngine == null || context.getBeforeSnapshot() == null) {
             return;
         }
@@ -95,6 +103,7 @@ public class AssertPhase<T> {
 
         SnapshotDiff diff = snapshotEngine.computeDiff(context.getBeforeSnapshot(), afterSnapshot);
         context.setSnapshotDiff(diff);
+        snapshotDiffComputed = true;
     }
 
     // Accessors for AssertBuilder

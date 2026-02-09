@@ -2,6 +2,7 @@ package com.flowtest.core.assertion;
 
 import com.flowtest.core.snapshot.RowModification;
 import com.flowtest.core.snapshot.SnapshotDiff;
+import com.flowtest.core.util.ValueComparator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -352,24 +353,8 @@ public class DbChangesAssert {
             return null;
         }
 
-        /**
-         * Compares values with type coercion.
-         */
         private boolean valuesEqual(Object expected, Object actual) {
-            if (expected == null && actual == null) {
-                return true;
-            }
-            if (expected == null || actual == null) {
-                return false;
-            }
-
-            // Handle numeric comparisons
-            if (expected instanceof Number && actual instanceof Number) {
-                return ((Number) expected).doubleValue() == ((Number) actual).doubleValue();
-            }
-
-            // String comparison
-            return expected.toString().equals(actual.toString());
+            return ValueComparator.valuesEqual(expected, actual);
         }
     }
 
@@ -575,12 +560,7 @@ public class DbChangesAssert {
         }
 
         private boolean valuesEqual(Object expected, Object actual) {
-            if (expected == null && actual == null) return true;
-            if (expected == null || actual == null) return false;
-            if (expected instanceof Number && actual instanceof Number) {
-                return ((Number) expected).doubleValue() == ((Number) actual).doubleValue();
-            }
-            return expected.toString().equals(actual.toString());
+            return ValueComparator.valuesEqual(expected, actual);
         }
     }
 }

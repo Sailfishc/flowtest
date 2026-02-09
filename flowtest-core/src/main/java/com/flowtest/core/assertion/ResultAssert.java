@@ -1,10 +1,9 @@
 package com.flowtest.core.assertion;
 
+import com.flowtest.core.util.ColumnNameResolver;
+import com.flowtest.core.util.ValueComparator;
+
 import java.io.Serializable;
-import java.lang.invoke.SerializedLambda;
-import java.lang.reflect.Method;
-import java.math.BigDecimal;
-import java.util.Objects;
 import java.util.function.Function;
 
 /**
@@ -49,9 +48,9 @@ public class ResultAssert<T, R> {
         }
 
         V actual = getter.apply(result);
-        String propertyName = extractPropertyName(getter);
+        String propertyName = ColumnNameResolver.extractPropertyName(getter);
 
-        if (!valuesEqual(expected, actual)) {
+        if (!ValueComparator.valuesEqual(expected, actual)) {
             throw new AssertionError(String.format(
                 "Result property '%s': expected <%s> but was <%s>",
                 propertyName, expected, actual));
@@ -91,84 +90,6 @@ public class ResultAssert<T, R> {
      */
     public T get() {
         return result;
-    }
-
-    /**
-     * Extracts the property name from a method reference.
-     */
-    private String extractPropertyName(SerializableFunction<T, ?> getter) {
-        try {
-            Method writeReplace = getter.getClass().getDeclaredMethod("writeReplace");
-            writeReplace.setAccessible(true);
-            SerializedLambda lambda = (SerializedLambda) writeReplace.invoke(getter);
-
-            String methodName = lambda.getImplMethodName();
-            // Convert getXxx to xxx
-            if (methodName.startsWith("get") && methodName.length() > 3) {
-                return Character.toLowerCase(methodName.charAt(3)) + methodName.substring(4);
-            } else if (methodName.startsWith("is") && methodName.length() > 2) {
-                return Character.toLowerCase(methodName.charAt(2)) + methodName.substring(3);
-            }
-            return methodName;
-        } catch (Exception e) {
-            return "unknown";
-        }
-    }
-
-    /**
-     * Compares values with type coercion for numbers.
-     */
-    private boolean valuesEqual(Object expected, Object actual) {
-        if (expected == null && actual == null) {
-            return true;
-        }
-        if (expected == null || actual == null) {
-            return false;
-        }
-
-        // Handle BigDecimal comparison
-        if (expected instanceof BigDecimal || actual instanceof BigDecimal) {
-            BigDecimal expectedBd = toBigDecimal(expected);
-            BigDecimal actualBd = toBigDecimal(actual);
-            if (expectedBd != null && actualBd != null) {
-                return expectedBd.compareTo(actualBd) == 0;
-            }
-        }
-
-        // Handle numeric comparison
-        if (expected instanceof Number && actual instanceof Number) {
-            return ((Number) expected).doubleValue() == ((Number) actual).doubleValue();
-        }
-
-        // Handle enum comparison
-        if (expected instanceof Enum && actual instanceof Enum) {
-            return expected == actual;
-        }
-
-        // String comparison for enums
-        if (expected instanceof String && actual instanceof Enum) {
-            return expected.equals(((Enum<?>) actual).name());
-        }
-        if (expected instanceof Enum && actual instanceof String) {
-            return ((Enum<?>) expected).name().equals(actual);
-        }
-
-        return Objects.equals(expected, actual);
-    }
-
-    private BigDecimal toBigDecimal(Object value) {
-        if (value instanceof BigDecimal) {
-            return (BigDecimal) value;
-        } else if (value instanceof Number) {
-            return BigDecimal.valueOf(((Number) value).doubleValue());
-        } else if (value instanceof String) {
-            try {
-                return new BigDecimal((String) value);
-            } catch (NumberFormatException e) {
-                return null;
-            }
-        }
-        return null;
     }
 
     /**

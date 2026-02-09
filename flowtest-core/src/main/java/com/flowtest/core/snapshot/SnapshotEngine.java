@@ -1,6 +1,7 @@
 package com.flowtest.core.snapshot;
 
 import com.flowtest.core.fixture.EntityMetadata;
+import com.flowtest.core.util.ValueComparator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -544,12 +545,7 @@ public class SnapshotEngine {
     }
 
     private boolean valuesEqual(Object v1, Object v2) {
-        if (v1 == null && v2 == null) return true;
-        if (v1 == null || v2 == null) return false;
-        if (v1 instanceof Number && v2 instanceof Number) {
-            return ((Number) v1).doubleValue() == ((Number) v2).doubleValue();
-        }
-        return v1.equals(v2);
+        return ValueComparator.valuesEqual(v1, v2);
     }
 
     private Object getValueCaseInsensitive(Map<String, Object> row, String columnName) {

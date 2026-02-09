@@ -232,7 +232,8 @@ public class ArrangeBuilder {
 
         for (String table : tables) {
             try {
-                String sql = "SELECT MAX(id) FROM " + table;
+                String idColumn = snapshotEngine.getIdColumnForTable(table);
+                String sql = "SELECT MAX(" + idColumn + ") FROM " + table;
                 Object maxId = jdbc.queryForObject(sql, Object.class);
                 snapshot.put(table, maxId);
             } catch (Exception e) {

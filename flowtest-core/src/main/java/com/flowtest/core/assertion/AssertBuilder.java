@@ -6,7 +6,10 @@ import com.flowtest.core.fixture.EntityMetadata;
 import com.flowtest.core.snapshot.RowModification;
 import com.flowtest.core.snapshot.SnapshotDiff;
 
+import com.flowtest.core.snapshot.TableSnapshot;
+
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -23,6 +26,7 @@ public class AssertBuilder<T> {
 
     private final AssertPhase<T> phase;
     private final TestContext context;
+    private final Map<Class<?>, EntityMetadata> metadataCache = new HashMap<>();
     private boolean expectNoException = false;
     private Class<? extends Throwable> expectedExceptionType;
     private String expectedExceptionMessage;
@@ -240,8 +244,8 @@ public class AssertBuilder<T> {
             }
         }
 
-        // Entity was not modified during act() - return null and let EntityStateAssert handle it
-        return null;
+        // Entity was not modified during act() - fall back to after snapshot for current state
+        return findRowInAfterSnapshot(tableName, entityId);
     }
 
     /**
@@ -268,6 +272,40 @@ public class AssertBuilder<T> {
         for (RowModification mod : modifications) {
             if (idsEqual(mod.getPrimaryKeyValue(), entityId)) {
                 return mod.getAfterRow();
+            }
+        }
+
+        // Entity was not modified during act() - fall back to after snapshot for current state
+        return findRowInAfterSnapshot(tableName, entityId);
+    }
+
+    /**
+     * Finds a row in the after snapshot by primary key.
+     * Used as fallback when entity was not modified during act().
+     */
+    private Map<String, Object> findRowInAfterSnapshot(String tableName, Object entityId) {
+        Map<String, TableSnapshot> afterSnapshot = context.getAfterSnapshot();
+        if (afterSnapshot == null) {
+            return null;
+        }
+
+        // Try case-insensitive table name lookup
+        TableSnapshot tableSnap = null;
+        for (Map.Entry<String, TableSnapshot> entry : afterSnapshot.entrySet()) {
+            if (entry.getKey().equalsIgnoreCase(tableName)) {
+                tableSnap = entry.getValue();
+                break;
+            }
+        }
+
+        if (tableSnap == null || !tableSnap.hasRowData()) {
+            return null;
+        }
+
+        // Search by primary key with type coercion
+        for (Map.Entry<Object, Map<String, Object>> entry : tableSnap.getRowsByPrimaryKey().entrySet()) {
+            if (idsEqual(entry.getKey(), entityId)) {
+                return entry.getValue();
             }
         }
 
@@ -464,10 +502,10 @@ public class AssertBuilder<T> {
     }
 
     /**
-     * Resolves the table name for an entity class.
+     * Resolves the table name for an entity class (cached).
      */
     private String resolveTableName(Class<?> entityClass) {
-        return new EntityMetadata(entityClass).getTableName();
+        return metadataCache.computeIfAbsent(entityClass, EntityMetadata::new).getTableName();
     }
 
     /**
