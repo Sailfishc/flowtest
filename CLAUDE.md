@@ -1,2 +1,135 @@
+# CLAUDE.md
 
-@.agents/AGENTS.md
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build Commands
+
+```bash
+# Build all modules
+mvn clean install
+
+# Build without tests
+mvn clean install -DskipTests
+
+# Run tests for a specific module
+mvn test -pl flowtest-demo
+
+# Run a single test class
+mvn test -pl flowtest-demo -Dtest=OrderServiceTest
+
+# Run a single test method
+mvn test -pl flowtest-demo -Dtest=OrderServiceTest#testNormalUserCreateOrder
+```
+
+## Architecture Overview
+
+FlowTest is a code-first Java 8 integration testing framework with a fluent DSL for database testing. It follows Arrange-Act-Assert with automatic test data generation and database change tracking.
+
+### Module Dependency Graph
+
+```
+flowtest-core  (foundation — no FlowTest module deps)
+  ├── flowtest-assertj-db    (+ AssertJ-DB)
+  ├── flowtest-junit5        (+ JUnit Jupiter)
+  ├── flowtest-testng        (+ TestNG)
+  ├── flowtest-mockito       (+ Mockito)
+  └── flowtest-spring-boot-starter  (aggregates core + junit5 + assertj-db)
+```
+
+The demo module lives in a separate repository.
+
+### Core Flow Pattern
+
+```java
+flow.arrange()
+    .add(User.class, UserTraits.vip(), UserTraits.balance(100.00))
+    .persist()
+    .act(() -> service.doSomething(flow.get(User.class).getId()))
+    .assertThat()
+        .noException()
+        .dbChanges(db -> db.table("t_order").hasNewRows(1));
+```
+
+### Key Components (flowtest-core)
+
+| Component | Package | Role |
+|-----------|---------|------|
+| `TestFlow` | `core` | Main entry point. Uses `ThreadLocal<TestContext>` for per-test isolation. |
+| `ArrangeBuilder` | `core.fixture` | Fluent builder for `add()`, `addMany()`, `persist()`, `build()`. |
+| `Trait<T>` | `core.fixture` | Functional interface for composable entity modifications via `.and()` / `Trait.compose()`. |
+| `DataFiller` | `core.fixture` | Interface for auto-populating entity fields. Implementations: `AutoFiller` (EasyRandom), `InstancioFiller` (Instancio). |
+| `EntityMetadata` | `core.fixture` | Reflection-based metadata extraction. Supports both JPA (`@Table`, `@Id`, `@Column`) and MyBatis-Plus (`@TableName`, `@TableId`, `@TableField`) annotations. |
+| `IdStrategy` | `core.fixture` | Enum: `AUTO`, `INPUT`, `ASSIGN_ID`, `ASSIGN_UUID`. |
+| `EntityPersister` | `core.persistence` | Interface for DB insert/delete. `JdbcEntityPersister` uses Spring JdbcTemplate with PreparedStatement. |
+| `SnapshotEngine` | `core.snapshot` | Captures before/after DB state. PK detection: user config → entity metadata → JDBC metadata → fallback "id". |
+| `CleanupStrategy` | `core.lifecycle` | Interface with 4 implementations matching `CleanupMode` enum. |
+| `ActPhase` / `AssertBuilder` | `core.assertion` | Execute business logic, then fluent assertions (exception, returnValue, dbChanges, entity state, newRow). |
+
+### Spring Boot Auto-Configuration
+
+`FlowTestAutoConfiguration` (registered via `META-INF/spring.factories`) creates:
+- `DataFiller` — `AutoFiller` by default, `InstancioFiller` when `flowtest.data-filler=instancio`
+- `JdbcEntityPersister` — from DataSource
+- `SnapshotEngine` — from DataSource + properties
+- `TestFlow` — wires the above together
+
+Config properties prefix: `flowtest.*` (cleanup-mode, seed, string-length-min/max, collection-size-min/max, randomization-depth, snapshot-tables, id-column-name, data-filler).
+
+### Persistence Internals
+
+**Table name resolution order:** `@Table(name)` → `@TableName(value)` → `@Entity(name)` → CamelCase→snake_case.
+
+**ID field resolution order:** `@Id` (JPA) → `@TableId` (MyBatis-Plus) → field named "id".
+
+**Value conversions in `JdbcEntityPersister.convertValue()`:** Enum→`.name()`, `LocalDateTime`→`Timestamp`, `LocalDate`→`java.sql.Date`.
+
+**Generated key retrieval:** Uses `getKeys()` map and searches by column name (not `getKey()`) because H2 may return multiple columns.
+
+### Thread Safety
+
+- `TestFlow`: `ThreadLocal<TestContext>` for per-test isolation
+- `JdbcEntityPersister`: `ConcurrentHashMap` for metadata cache
+- `SnapshotEngine`: `ConcurrentHashMap` for table primary key cache
+
+### JUnit 5 / TestNG `@Nested` Class Support
+
+Both extensions handle `@Nested` inner classes by traversing to the enclosing instance via the synthetic `this$0` field to find the `TestFlow` field defined in the outer class.
+
+## Common Issues & Lessons Learned
+
+### H2 Database Reserved Words
+`user` and `order` are reserved in H2. Use `t_` prefix: `t_user`, `t_order`, `t_product`.
+
+### Enum Persistence in JDBC
+JDBC `setObject()` serializes Java enums as binary. Convert enums to `String` via `.name()` before inserting.
+
+### H2 AUTO_INCREMENT Not Reset After Rollback
+H2's AUTO_INCREMENT counter persists across rollbacks. Use `COUNT(*)` difference (not `MAX(id)`) to calculate new rows in `SnapshotEngine`.
+
+### @Transactional vs SNAPSHOT_BASED Cleanup Conflict
+Never mix both. Use `@Transactional` for most tests. Use `SNAPSHOT_BASED` with `@Transactional(propagation = NOT_SUPPORTED)` when real commits are needed.
+
+### Non-Transactional Tests Pollute Shared H2
+Tests with `NOT_SUPPORTED` propagation commit real data. Move to separate `@Nested` classes and always use `try-finally` for cleanup:
+
+```java
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+void testWithRealCommit() {
+    Long baseline = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM t_order", Long.class);
+    try {
+        // test logic
+    } finally {
+        jdbcTemplate.update("DELETE FROM t_order WHERE id > ?", baseline);
+        flow.cleanup();
+    }
+}
+```
+
+### LocalDateTime JDBC Conversion
+Convert `LocalDateTime` to `java.sql.Timestamp` before inserting (handled by `JdbcEntityPersister`).
+
+### AssertJ-DB Table API
+`Changes.setTables(String...)` doesn't exist — convert table names to `Table` objects first.
+
+### Java 8 Compatibility
+This project targets Java 8. EasyRandom 4.3.0 and Instancio 3.7.1 are the last versions supporting Java 8. Do not upgrade these dependencies beyond these versions.
