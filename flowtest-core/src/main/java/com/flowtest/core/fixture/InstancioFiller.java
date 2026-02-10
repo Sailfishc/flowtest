@@ -4,6 +4,7 @@ import org.instancio.Instancio;
 import org.instancio.settings.Keys;
 import org.instancio.settings.Settings;
 
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 
@@ -45,9 +46,49 @@ public class InstancioFiller implements DataFiller {
 
     @Override
     public <T> T fill(Class<T> entityClass) {
-        return Instancio.of(entityClass)
+        T entity = Instancio.of(entityClass)
             .withSettings(settings)
             .create();
+        clearIdFields(entity);
+        return entity;
+    }
+
+    /**
+     * Clears ID fields that Instancio's JPA mode may not have excluded
+     * (e.g., fields named "id" without @Id annotation, or @TableId fields).
+     */
+    private void clearIdFields(Object entity) {
+        Class<?> clazz = entity.getClass();
+        while (clazz != null && clazz != Object.class) {
+            for (Field field : clazz.getDeclaredFields()) {
+                if (Modifier.isStatic(field.getModifiers())) {
+                    continue;
+                }
+                if (isIdField(field)) {
+                    field.setAccessible(true);
+                    try {
+                        field.set(entity, null);
+                    } catch (Exception ignored) {
+                    }
+                }
+            }
+            clazz = clazz.getSuperclass();
+        }
+    }
+
+    private boolean isIdField(Field field) {
+        if ("id".equalsIgnoreCase(field.getName())) {
+            return true;
+        }
+        for (Annotation ann : field.getAnnotations()) {
+            String name = ann.annotationType().getName();
+            if (name.equals("javax.persistence.Id")
+                    || name.equals("jakarta.persistence.Id")
+                    || name.equals("com.baomidou.mybatisplus.annotation.TableId")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override

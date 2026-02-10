@@ -68,7 +68,7 @@ flow.arrange()
 ### Spring Boot Auto-Configuration
 
 `FlowTestAutoConfiguration` (registered via `META-INF/spring.factories`) creates:
-- `DataFiller` — `AutoFiller` by default, `InstancioFiller` when `flowtest.data-filler=instancio`
+- `DataFiller` — `InstancioFiller` by default, `AutoFiller` when `flowtest.data-filler=easyrandom`
 - `JdbcEntityPersister` — from DataSource
 - `SnapshotEngine` — from DataSource + properties
 - `TestFlow` — wires the above together

@@ -72,9 +72,9 @@ public class FlowTestProperties {
     private String idColumnName = "id";
 
     /**
-     * Data filler type: "easyrandom" (default) or "instancio".
+     * Data filler type: "instancio" (default) or "easyrandom".
      */
-    private String dataFiller = "easyrandom";
+    private String dataFiller = "instancio";
 
     /**
      * Whether to clean up act-produced data in COMPENSATING mode.

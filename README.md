@@ -75,7 +75,7 @@ Starter 自动配置以下 Bean，无需手动创建：
 
 | Bean | 作用 |
 |------|------|
-| `DataFiller` | 自动填充实体字段（默认 EasyRandom，可选 Instancio） |
+| `DataFiller` | 自动填充实体字段（默认 Instancio，可选 EasyRandom） |
 | `EntityPersister` | 通过 JDBC 插入/删除实体 |
 | `SnapshotEngine` | 数据库快照与变更追踪 |
 | `TestFlow` | 测试入口，注入到测试类中使用 |
@@ -252,14 +252,14 @@ public class UserTraits {
 
 | 引擎 | 配置值 | 特点 |
 |------|--------|------|
-| **EasyRandom**（默认） | `easyrandom` | 稳定可靠，支持 seed 重放 |
-| **Instancio** | `instancio` | 更强的类型推断，支持 JPA 注解感知 |
+| **Instancio**（默认） | `instancio` | 更强的类型推断，原生支持 JPA 注解感知 |
+| **EasyRandom** | `easyrandom` | 稳定可靠，支持 seed 重放 |
 
 在 `application.yml` 中切换：
 
 ```yaml
 flowtest:
-  data-filler: instancio    # 默认 easyrandom
+  data-filler: easyrandom    # 默认 instancio
   seed: 12345                # 固定种子，让测试数据可重放（0 = 随机）
   string-length-min: 5
   string-length-max: 20
@@ -552,7 +552,7 @@ void testManualCleanup() {
 
 ### 配置方式
 
-在 `application.yml` 中声明数据源映射：
+在 `application.yml`（或 `application.properties`，见[配置参考](#applicationproperties-格式)）中声明数据源映射：
 
 ```yaml
 # 方式一：自动发现（最简单）
@@ -792,7 +792,7 @@ flowtest:
   clean-act-data: false
 
   # 数据填充引擎
-  data-filler: easyrandom              # easyrandom | instancio
+  data-filler: instancio               # instancio | easyrandom
 
   # 随机种子（0 = 每次运行不同）
   seed: 0
@@ -820,6 +820,38 @@ flowtest:
       tables: [t_order*, t_product]
     userDataSource:
       tables: [t_user*]
+```
+
+### application.properties 格式
+
+如果项目使用 `application.properties`（如 SOFABoot），配置完全等价：
+
+```properties
+# 基础配置
+flowtest.cleanup-mode=TRANSACTION
+flowtest.clean-act-data=false
+flowtest.data-filler=instancio
+flowtest.seed=0
+flowtest.string-length-min=5
+flowtest.string-length-max=20
+flowtest.collection-size-min=1
+flowtest.collection-size-max=3
+flowtest.randomization-depth=3
+flowtest.snapshot-tables=
+flowtest.id-column-name=id
+
+# 多数据源配置
+flowtest.datasources.orderDataSource.tables[0]=t_order*
+flowtest.datasources.orderDataSource.tables[1]=t_product
+flowtest.datasources.userDataSource.tables[0]=t_user*
+```
+
+自动发现模式只需声明数据源名称，无需配置 tables：
+
+```properties
+# 自动发现 —— 只声明数据源，表映射自动从数据库元数据获取
+flowtest.datasources.orderDataSource.tables=
+flowtest.datasources.userDataSource.tables=
 ```
 
 ### @FlowTest 注解属性

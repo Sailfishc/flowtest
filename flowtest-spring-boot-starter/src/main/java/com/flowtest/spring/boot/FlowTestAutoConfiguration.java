@@ -57,23 +57,7 @@ public class FlowTestAutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(DataFiller.class)
-    @ConditionalOnProperty(name = "flowtest.data-filler", havingValue = "instancio")
-    public DataFiller flowTestInstancioFiller(FlowTestProperties properties) {
-        Settings settings = Settings.create()
-            .set(Keys.SEED, properties.getSeed() != 0 ? properties.getSeed() : System.currentTimeMillis())
-            .set(Keys.STRING_MIN_LENGTH, properties.getStringLengthMin())
-            .set(Keys.STRING_MAX_LENGTH, properties.getStringLengthMax())
-            .set(Keys.COLLECTION_MIN_SIZE, properties.getCollectionSizeMin())
-            .set(Keys.COLLECTION_MAX_SIZE, properties.getCollectionSizeMax())
-            .set(Keys.MAX_DEPTH, properties.getRandomizationDepth())
-            .set(Keys.JPA_ENABLED, true)
-            .lock();
-
-        return new InstancioFiller(settings);
-    }
-
-    @Bean
-    @ConditionalOnMissingBean(DataFiller.class)
+    @ConditionalOnProperty(name = "flowtest.data-filler", havingValue = "easyrandom")
     public DataFiller flowTestAutoFiller(FlowTestProperties properties) {
         EasyRandomParameters params = new EasyRandomParameters()
             .seed(properties.getSeed() != 0 ? properties.getSeed() : System.currentTimeMillis())
@@ -88,6 +72,22 @@ public class FlowTestAutoConfiguration {
             );
 
         return new AutoFiller(params);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DataFiller.class)
+    public DataFiller flowTestInstancioFiller(FlowTestProperties properties) {
+        Settings settings = Settings.create()
+            .set(Keys.SEED, properties.getSeed() != 0 ? properties.getSeed() : System.currentTimeMillis())
+            .set(Keys.STRING_MIN_LENGTH, properties.getStringLengthMin())
+            .set(Keys.STRING_MAX_LENGTH, properties.getStringLengthMax())
+            .set(Keys.COLLECTION_MIN_SIZE, properties.getCollectionSizeMin())
+            .set(Keys.COLLECTION_MAX_SIZE, properties.getCollectionSizeMax())
+            .set(Keys.MAX_DEPTH, properties.getRandomizationDepth())
+            .set(Keys.JPA_ENABLED, true)
+            .lock();
+
+        return new InstancioFiller(settings);
     }
 
     @Bean
