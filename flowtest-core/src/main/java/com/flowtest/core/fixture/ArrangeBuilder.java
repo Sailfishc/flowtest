@@ -217,29 +217,19 @@ public class ArrangeBuilder {
     /**
      * Records cleanup snapshot baseline for all tables.
      * This is called before persist() to enable cleanup of act-produced data.
+     * Uses full row-data snapshots for primary-key-type-agnostic cleanup.
      */
     private void recordCleanupSnapshot() {
         if (snapshotEngine == null) {
             return;
         }
-        if (!context.getCleanupSnapshot().isEmpty()) {
+        if (context.getCleanupBeforeSnapshot() != null) {
             return; // Already recorded
         }
 
         java.util.Set<String> tables = snapshotEngine.listTableNames();
-        java.util.Map<String, Object> snapshot = new java.util.LinkedHashMap<>();
-        org.springframework.jdbc.core.JdbcTemplate jdbc = snapshotEngine.getJdbcTemplate();
-
-        for (String table : tables) {
-            try {
-                String idColumn = snapshotEngine.getIdColumnForTable(table);
-                String sql = "SELECT MAX(" + idColumn + ") FROM " + table;
-                Object maxId = jdbc.queryForObject(sql, Object.class);
-                snapshot.put(table, maxId);
-            } catch (Exception e) {
-                snapshot.put(table, null);
-            }
-        }
-        context.setCleanupSnapshot(snapshot);
+        java.util.Map<String, com.flowtest.core.snapshot.TableSnapshot> beforeSnapshots =
+            snapshotEngine.takeBeforeSnapshot(tables);
+        context.setCleanupBeforeSnapshot(beforeSnapshots);
     }
 }

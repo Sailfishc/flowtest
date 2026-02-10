@@ -74,6 +74,13 @@ public class FlowTestProperties {
      */
     private String dataFiller = "easyrandom";
 
+    /**
+     * Whether to clean up act-produced data in COMPENSATING mode.
+     * When true, uses snapshot comparison to also delete rows
+     * created during the act() phase.
+     */
+    private boolean cleanActData = false;
+
     // Getters and Setters
 
     public CleanupMode getCleanupMode() {
@@ -154,5 +161,13 @@ public class FlowTestProperties {
 
     public void setDataFiller(String dataFiller) {
         this.dataFiller = dataFiller;
+    }
+
+    public boolean isCleanActData() {
+        return cleanActData;
+    }
+
+    public void setCleanActData(boolean cleanActData) {
+        this.cleanActData = cleanActData;
     }
 }

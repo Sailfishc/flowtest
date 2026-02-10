@@ -63,6 +63,7 @@ public class FlowTestListener implements ITestListener {
         // Get FlowTest annotation
         FlowTest annotation = getFlowTestAnnotation(result);
         CleanupMode cleanupMode = annotation != null ? annotation.cleanup() : CleanupMode.TRANSACTION;
+        boolean cleanActData = annotation != null && annotation.cleanActData();
         Set<String> snapshotTables = annotation != null ?
             new HashSet<String>(Arrays.asList(annotation.snapshotTables())) : new HashSet<String>();
 
@@ -81,7 +82,7 @@ public class FlowTestListener implements ITestListener {
         }
 
         // Create cleanup strategy
-        CleanupStrategy cleanup = createCleanupStrategy(cleanupMode, flow);
+        CleanupStrategy cleanup = createCleanupStrategy(cleanupMode, flow, cleanActData);
 
         // Store in thread-local
         stateHolder.set(new TestState(testContext, cleanup, flow));
@@ -248,7 +249,7 @@ public class FlowTestListener implements ITestListener {
     /**
      * Creates the appropriate cleanup strategy.
      */
-    private CleanupStrategy createCleanupStrategy(CleanupMode mode, TestFlow flow) {
+    private CleanupStrategy createCleanupStrategy(CleanupMode mode, TestFlow flow, boolean cleanActData) {
         switch (mode) {
             case SNAPSHOT_BASED:
                 if (flow != null && flow.getPersister() != null && flow.getSnapshotEngine() != null) {
@@ -259,7 +260,7 @@ public class FlowTestListener implements ITestListener {
 
             case COMPENSATING:
                 if (flow != null && flow.getPersister() != null) {
-                    return new CompensatingCleanup(flow.getPersister());
+                    return new CompensatingCleanup(flow.getPersister(), flow.getSnapshotEngine(), cleanActData);
                 }
                 log.warn("COMPENSATING cleanup requires TestFlow with EntityPersister. Falling back to TRANSACTION.");
                 return new TransactionalCleanup();

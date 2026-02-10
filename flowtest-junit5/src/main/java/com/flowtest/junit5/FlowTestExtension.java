@@ -45,6 +45,7 @@ public class FlowTestExtension implements BeforeEachCallback, AfterEachCallback 
         // Get FlowTest annotation
         FlowTest annotation = getFlowTestAnnotation(context);
         CleanupMode cleanupMode = annotation != null ? annotation.cleanup() : CleanupMode.TRANSACTION;
+        boolean cleanActData = annotation != null && annotation.cleanActData();
         Set<String> snapshotTables = annotation != null ?
             new HashSet<>(Arrays.asList(annotation.snapshotTables())) : new HashSet<>();
 
@@ -64,7 +65,7 @@ public class FlowTestExtension implements BeforeEachCallback, AfterEachCallback 
         }
 
         // Create cleanup strategy
-        CleanupStrategy cleanup = createCleanupStrategy(cleanupMode, flow);
+        CleanupStrategy cleanup = createCleanupStrategy(cleanupMode, flow, cleanActData);
 
         // Store in extension context
         context.getStore(NAMESPACE).put(CONTEXT_KEY, testContext);
@@ -187,7 +188,7 @@ public class FlowTestExtension implements BeforeEachCallback, AfterEachCallback 
     /**
      * Creates the appropriate cleanup strategy.
      */
-    private CleanupStrategy createCleanupStrategy(CleanupMode mode, TestFlow flow) {
+    private CleanupStrategy createCleanupStrategy(CleanupMode mode, TestFlow flow, boolean cleanActData) {
         switch (mode) {
             case SNAPSHOT_BASED:
                 if (flow != null && flow.getPersister() != null && flow.getSnapshotEngine() != null) {
@@ -198,7 +199,7 @@ public class FlowTestExtension implements BeforeEachCallback, AfterEachCallback 
 
             case COMPENSATING:
                 if (flow != null && flow.getPersister() != null) {
-                    return new CompensatingCleanup(flow.getPersister());
+                    return new CompensatingCleanup(flow.getPersister(), flow.getSnapshotEngine(), cleanActData);
                 }
                 log.warn("COMPENSATING cleanup requires TestFlow with EntityPersister. Falling back to TRANSACTION.");
                 return new TransactionalCleanup();

@@ -38,7 +38,14 @@ public class TestContext {
     /** Return value from act phase */
     private Object actResult;
 
-    /** Cleanup snapshot: table name -> MAX(ID) before test (supports various ID types) */
+    /** Full cleanup before snapshot: table name -> TableSnapshot (row-data-based cleanup) */
+    private Map<String, TableSnapshot> cleanupBeforeSnapshot;
+
+    /**
+     * Cleanup snapshot: table name -> MAX(ID) before test (supports various ID types).
+     * @deprecated Use {@link #cleanupBeforeSnapshot} for row-data-based cleanup instead.
+     */
+    @Deprecated
     private Map<String, Object> cleanupSnapshot = new LinkedHashMap<>();
 
     /** Mock context (optional, used when flowtest-mockito is on classpath) */
@@ -186,10 +193,26 @@ public class TestContext {
         this.actResult = actResult;
     }
 
+    public Map<String, TableSnapshot> getCleanupBeforeSnapshot() {
+        return cleanupBeforeSnapshot;
+    }
+
+    public void setCleanupBeforeSnapshot(Map<String, TableSnapshot> cleanupBeforeSnapshot) {
+        this.cleanupBeforeSnapshot = cleanupBeforeSnapshot;
+    }
+
+    /**
+     * @deprecated Use {@link #getCleanupBeforeSnapshot()} instead.
+     */
+    @Deprecated
     public Map<String, Object> getCleanupSnapshot() {
         return Collections.unmodifiableMap(cleanupSnapshot);
     }
 
+    /**
+     * @deprecated Use {@link #setCleanupBeforeSnapshot(Map)} instead.
+     */
+    @Deprecated
     public void setCleanupSnapshot(Map<String, Object> snapshot) {
         this.cleanupSnapshot = snapshot != null ? new LinkedHashMap<>(snapshot) : new LinkedHashMap<>();
     }
@@ -221,6 +244,7 @@ public class TestContext {
         snapshotDiff = null;
         thrownException = null;
         actResult = null;
+        cleanupBeforeSnapshot = null;
         cleanupSnapshot.clear();
         mockContext = null;
     }

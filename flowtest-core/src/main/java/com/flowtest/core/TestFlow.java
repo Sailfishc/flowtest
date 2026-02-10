@@ -207,10 +207,16 @@ public class TestFlow {
         if (context == null) {
             return;
         }
-
-        if (snapshotEngine != null && persister != null) {
-            SnapshotBasedCleanup cleanup = new SnapshotBasedCleanup(snapshotEngine, persister);
-            cleanup.afterTest(context);
+        if (snapshotEngine == null || persister == null) {
+            return;
         }
+
+        // If no before snapshot exists yet, take one now using all known tables
+        if (context.getCleanupBeforeSnapshot() == null) {
+            java.util.Set<String> tables = snapshotEngine.listTableNames();
+            context.setCleanupBeforeSnapshot(snapshotEngine.takeBeforeSnapshot(tables));
+        }
+
+        new SnapshotBasedCleanup(snapshotEngine, persister).afterTest(context);
     }
 }

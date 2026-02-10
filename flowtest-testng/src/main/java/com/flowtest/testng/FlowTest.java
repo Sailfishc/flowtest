@@ -65,4 +65,12 @@ public @interface FlowTest {
      * If empty, tables are discovered from entities used in the test.
      */
     String[] snapshotTables() default {};
+
+    /**
+     * Whether to clean up act-produced data in COMPENSATING mode.
+     * When true and cleanup mode is COMPENSATING, uses snapshot comparison
+     * to also delete rows created during the act() phase.
+     * Has no effect in other cleanup modes.
+     */
+    boolean cleanActData() default false;
 }

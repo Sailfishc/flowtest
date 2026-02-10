@@ -3,9 +3,9 @@ package com.flowtest.core.lifecycle;
 import com.flowtest.core.TestContext;
 import com.flowtest.core.persistence.EntityPersister;
 import com.flowtest.core.snapshot.SnapshotEngine;
+import com.flowtest.core.snapshot.TableSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.*;
 
@@ -14,12 +14,16 @@ import java.util.*;
  * This includes both data created during persist() phase and data produced by
  * business logic during act() phase.
  *
- * <p>Algorithm:
+ * <p>Algorithm (row-data-based):
  * <ol>
- *   <li>beforeTest: Record MAX(ID) for each table as baseline</li>
- *   <li>afterTest: Delete rows where ID > baseline (act-produced data)</li>
+ *   <li>beforeTest: Take full row-data snapshots for all tables</li>
+ *   <li>afterTest: Take after snapshots, compare primary key sets to find new rows</li>
+ *   <li>afterTest: Delete new rows by primary key (supports any PK type)</li>
  *   <li>afterTest: Delete rows recorded in persistedIds (persist-produced data)</li>
  * </ol>
+ *
+ * <p>This approach supports any primary key type (numeric, UUID, string) and does not
+ * require monotonically increasing IDs.
  */
 public class SnapshotBasedCleanup implements CleanupStrategy {
 
@@ -27,54 +31,24 @@ public class SnapshotBasedCleanup implements CleanupStrategy {
 
     private final SnapshotEngine snapshotEngine;
     private final EntityPersister persister;
-    private String defaultIdColumn = "id";
-    private Map<String, String> tableIdColumns = new HashMap<>();
 
     public SnapshotBasedCleanup(SnapshotEngine snapshotEngine, EntityPersister persister) {
         this.snapshotEngine = snapshotEngine;
         this.persister = persister;
     }
 
-    public void setDefaultIdColumn(String columnName) {
-        this.defaultIdColumn = columnName;
-    }
-
-    public void setTableIdColumn(String tableName, String columnName) {
-        this.tableIdColumns.put(tableName.toLowerCase(), columnName);
-    }
-
-    private String getIdColumn(String tableName) {
-        return tableIdColumns.getOrDefault(tableName.toLowerCase(), defaultIdColumn);
-    }
-
     @Override
     public void beforeTest(TestContext context) {
-        // Record MAX(ID) for all tables as cleanup baseline
+        // Take full row-data snapshots for all tables as cleanup baseline
         Set<String> tables = snapshotEngine.listTableNames();
-        Map<String, Object> snapshot = new LinkedHashMap<>();
-
-        JdbcTemplate jdbc = snapshotEngine.getJdbcTemplate();
-
-        for (String table : tables) {
-            String idColumn = getIdColumn(table);
-            try {
-                String sql = "SELECT MAX(" + idColumn + ") FROM " + table;
-                Object maxId = jdbc.queryForObject(sql, Object.class);
-                snapshot.put(table, maxId);
-                log.debug("Cleanup baseline for {}: maxId={}", table, maxId);
-            } catch (Exception e) {
-                log.debug("Skipping table {} for cleanup: {}", table, e.getMessage());
-                snapshot.put(table, null);
-            }
-        }
-
-        context.setCleanupSnapshot(snapshot);
-        log.debug("Recorded cleanup snapshot for {} tables", snapshot.size());
+        Map<String, TableSnapshot> beforeSnapshots = snapshotEngine.takeBeforeSnapshot(tables);
+        context.setCleanupBeforeSnapshot(beforeSnapshots);
+        log.debug("Recorded cleanup before snapshot for {} tables", beforeSnapshots.size());
     }
 
     @Override
     public void afterTest(TestContext context) {
-        // Step 1: Delete act-produced data (ID > baseline)
+        // Step 1: Delete act-produced data (new rows detected by PK comparison)
         deleteActProducedData(context);
 
         // Step 2: Delete persist-produced data
@@ -87,46 +61,39 @@ public class SnapshotBasedCleanup implements CleanupStrategy {
     }
 
     /**
-     * Deletes rows created during act() phase by comparing against baseline MAX(ID).
+     * Deletes rows created during act() phase by comparing before/after snapshots.
+     * Uses primary key set comparison — works with any PK type.
      */
     private void deleteActProducedData(TestContext context) {
-        Map<String, Object> baseline = context.getCleanupSnapshot();
-        if (baseline.isEmpty()) {
-            log.debug("No cleanup baseline found, skipping act-produced data cleanup");
+        Map<String, TableSnapshot> beforeSnapshots = context.getCleanupBeforeSnapshot();
+        if (beforeSnapshots == null || beforeSnapshots.isEmpty()) {
+            log.debug("No cleanup before snapshot found, skipping act-produced data cleanup");
             return;
         }
 
-        JdbcTemplate jdbc = snapshotEngine.getJdbcTemplate();
+        // Take after snapshots for the same tables
+        Set<String> tables = beforeSnapshots.keySet();
+        Map<String, TableSnapshot> afterSnapshots = snapshotEngine.takeAfterSnapshot(tables);
 
         // Reverse order to handle foreign key dependencies
-        List<String> tables = new ArrayList<>(baseline.keySet());
-        Collections.reverse(tables);
+        List<String> tableList = new ArrayList<>(tables);
+        Collections.reverse(tableList);
 
-        for (String table : tables) {
-            Object baselineMaxId = baseline.get(table);
-            String idColumn = getIdColumn(table);
+        for (String table : tableList) {
+            TableSnapshot before = beforeSnapshots.get(table);
+            TableSnapshot after = afterSnapshots.get(table);
 
-            try {
-                int deleted;
-                if (baselineMaxId == null) {
-                    // Table was empty before test - delete ALL rows
-                    String sql = "DELETE FROM " + table;
-                    deleted = jdbc.update(sql);
-                    if (deleted > 0) {
-                        log.debug("Deleted {} act-produced rows from {} (table was empty before test)",
-                            deleted, table);
-                    }
-                } else {
-                    // Delete rows with ID > baseline
-                    String sql = "DELETE FROM " + table + " WHERE " + idColumn + " > ?";
-                    deleted = jdbc.update(sql, baselineMaxId);
-                    if (deleted > 0) {
-                        log.debug("Deleted {} act-produced rows from {} ({} > {})",
-                            deleted, table, idColumn, baselineMaxId);
-                    }
-                }
-            } catch (Exception e) {
-                log.warn("Failed to cleanup act-produced data from {}: {}", table, e.getMessage());
+            if (after == null) {
+                continue;
+            }
+
+            String idColumn = snapshotEngine.getIdColumnForTable(table);
+            List<Object> newKeys = snapshotEngine.findNewPrimaryKeys(before, after);
+
+            if (!newKeys.isEmpty()) {
+                int deleted = snapshotEngine.deleteRowsByPrimaryKeys(table, idColumn, newKeys);
+                log.debug("Deleted {} act-produced rows from {} (found {} new PKs)",
+                    deleted, table, newKeys.size());
             }
         }
     }

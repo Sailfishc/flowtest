@@ -577,6 +577,76 @@ public class SnapshotEngine {
     }
     
     /**
+     * Finds primary key values that exist in the after snapshot but not in the before snapshot.
+     * This method works with any primary key type (numeric, UUID, string, etc.).
+     *
+     * @param before the before snapshot
+     * @param after the after snapshot
+     * @return list of new primary key values
+     */
+    public List<Object> findNewPrimaryKeys(TableSnapshot before, TableSnapshot after) {
+        List<Object> newKeys = new ArrayList<>();
+        if (after == null || !after.hasRowData()) {
+            return newKeys;
+        }
+
+        Set<Object> beforeKeys = before != null && before.hasRowData()
+            ? before.getRowsByPrimaryKey().keySet()
+            : Collections.<Object>emptySet();
+
+        for (Object key : after.getRowsByPrimaryKey().keySet()) {
+            if (!beforeKeys.contains(key)) {
+                newKeys.add(key);
+            }
+        }
+
+        return newKeys;
+    }
+
+    /**
+     * Deletes rows from a table by their primary key values.
+     * Supports any primary key type (numeric, UUID, string, etc.).
+     *
+     * @param table the table name
+     * @param idColumn the primary key column name
+     * @param pkValues the primary key values to delete
+     * @return total number of rows deleted
+     */
+    public int deleteRowsByPrimaryKeys(String table, String idColumn, List<Object> pkValues) {
+        if (pkValues == null || pkValues.isEmpty()) {
+            return 0;
+        }
+
+        int totalDeleted = 0;
+
+        // Delete in batches to avoid overly large IN clauses
+        int batchSize = 100;
+        for (int i = 0; i < pkValues.size(); i += batchSize) {
+            int end = Math.min(i + batchSize, pkValues.size());
+            List<Object> batch = pkValues.subList(i, end);
+
+            StringBuilder sql = new StringBuilder("DELETE FROM ");
+            sql.append(table).append(" WHERE ").append(idColumn).append(" IN (");
+            for (int j = 0; j < batch.size(); j++) {
+                if (j > 0) {
+                    sql.append(", ");
+                }
+                sql.append("?");
+            }
+            sql.append(")");
+
+            try {
+                int deleted = jdbcTemplate.update(sql.toString(), batch.toArray());
+                totalDeleted += deleted;
+            } catch (Exception e) {
+                log.warn("Failed to delete rows from {} by primary keys: {}", table, e.getMessage());
+            }
+        }
+
+        return totalDeleted;
+    }
+
+    /**
      * Clears the primary key detection cache.
      * Useful for testing or when database schema changes.
      */
