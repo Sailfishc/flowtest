@@ -61,7 +61,7 @@ flow.arrange()
 | `EntityMetadata` | `core.fixture` | Reflection-based metadata extraction. Supports both JPA (`@Table`, `@Id`, `@Column`) and MyBatis-Plus (`@TableName`, `@TableId`, `@TableField`) annotations. |
 | `IdStrategy` | `core.fixture` | Enum: `AUTO`, `INPUT`, `ASSIGN_ID`, `ASSIGN_UUID`. |
 | `EntityPersister` | `core.persistence` | Interface for DB insert/delete. `JdbcEntityPersister` uses Spring JdbcTemplate with PreparedStatement. |
-| `SnapshotEngine` | `core.snapshot` | Captures before/after DB state. PK detection: user config → entity metadata → JDBC metadata → fallback "id". |
+| `SnapshotEngine` | `core.snapshot` | Captures before/after DB state. PK detection: user config → entity metadata → JDBC metadata → fallback "id". Also provides `findNewPrimaryKeys()` and `deleteRowsByPrimaryKeys()` for cleanup. |
 | `CleanupStrategy` | `core.lifecycle` | Interface with 4 implementations matching `CleanupMode` enum. |
 | `ActPhase` / `AssertBuilder` | `core.assertion` | Execute business logic, then fluent assertions (exception, returnValue, dbChanges, entity state, newRow). |
 
@@ -73,7 +73,7 @@ flow.arrange()
 - `SnapshotEngine` — from DataSource + properties
 - `TestFlow` — wires the above together
 
-Config properties prefix: `flowtest.*` (cleanup-mode, seed, string-length-min/max, collection-size-min/max, randomization-depth, snapshot-tables, id-column-name, data-filler).
+Config properties prefix: `flowtest.*` (cleanup-mode, clean-act-data, seed, string-length-min/max, collection-size-min/max, randomization-depth, snapshot-tables, id-column-name, data-filler).
 
 ### Persistence Internals
 
@@ -95,6 +95,32 @@ Config properties prefix: `flowtest.*` (cleanup-mode, seed, string-length-min/ma
 
 Both extensions handle `@Nested` inner classes by traversing to the enclosing instance via the synthetic `this$0` field to find the `TestFlow` field defined in the outer class.
 
+### Cleanup Architecture
+
+Cleanup runs after each test to remove test data. Four modes are available via `@FlowTest(cleanup = ...)`:
+
+| Mode | Algorithm | Cleans arrange data | Cleans act data | PK type requirement |
+|------|-----------|:-:|:-:|:-:|
+| `TRANSACTION` (default) | Spring `@Transactional` rollback | ✅ | ✅ | None |
+| `COMPENSATING` | Delete by `persistedIds` | ✅ | ❌ default / ✅ `cleanActData=true` | None |
+| `SNAPSHOT_BASED` | Before/after PK set comparison | ✅ | ✅ | None (any PK type) |
+| `NONE` | No-op | ❌ | ❌ | — |
+
+**Row-data-based cleanup algorithm** (used by `SNAPSHOT_BASED` and `COMPENSATING` with `cleanActData=true`):
+1. `beforeTest()`: call `SnapshotEngine.takeBeforeSnapshot()` — captures all rows indexed by primary key, stored in `TestContext.cleanupBeforeSnapshot`
+2. `afterTest()`: call `SnapshotEngine.takeAfterSnapshot()` — captures current state
+3. Compare primary key sets via `SnapshotEngine.findNewPrimaryKeys(before, after)` — works with any PK type (numeric, UUID, string)
+4. Delete new rows via `SnapshotEngine.deleteRowsByPrimaryKeys()` (batched `DELETE WHERE pk IN (...)`)
+5. Then delete `persistedIds` entities via `EntityPersister.deleteAll()`
+
+**Key design decisions:**
+- All ID column resolution is centralized in `SnapshotEngine.getIdColumnForTable()` (4-layer priority: user config → entity metadata → JDBC metadata → fallback "id")
+- `ArrangeBuilder.recordCleanupSnapshot()` stores full `TableSnapshot` (not just `MAX(ID)`)
+- `TestFlow.cleanup()` takes a before snapshot on-demand if none exists, then delegates to `SnapshotBasedCleanup`
+- `CompensatingCleanup` accepts optional `(SnapshotEngine, cleanActData)` to bridge the gap between L1 (transaction) and L3 (snapshot-based)
+- `@FlowTest` annotation has `cleanActData` attribute (default `false`), only effective in `COMPENSATING` mode
+- Old `TestContext.cleanupSnapshot` (`Map<String, Object>` of MAX IDs) is `@Deprecated`; new field is `cleanupBeforeSnapshot` (`Map<String, TableSnapshot>`)
+
 ## Common Issues & Lessons Learned
 
 ### H2 Database Reserved Words
@@ -107,20 +133,32 @@ JDBC `setObject()` serializes Java enums as binary. Convert enums to `String` vi
 H2's AUTO_INCREMENT counter persists across rollbacks. Use `COUNT(*)` difference (not `MAX(id)`) to calculate new rows in `SnapshotEngine`.
 
 ### @Transactional vs SNAPSHOT_BASED Cleanup Conflict
-Never mix both. Use `@Transactional` for most tests. Use `SNAPSHOT_BASED` with `@Transactional(propagation = NOT_SUPPORTED)` when real commits are needed.
+Never mix `@Transactional` rollback with `SNAPSHOT_BASED`/`COMPENSATING` cleanup — they conflict. Use `@Transactional` for most tests. Use `SNAPSHOT_BASED` or `COMPENSATING(cleanActData=true)` with `@Transactional(propagation = NOT_SUPPORTED)` when real commits are needed.
 
 ### Non-Transactional Tests Pollute Shared H2
-Tests with `NOT_SUPPORTED` propagation commit real data. Move to separate `@Nested` classes and always use `try-finally` for cleanup:
+Tests with `NOT_SUPPORTED` propagation commit real data. Preferred approach: use `SNAPSHOT_BASED` or `COMPENSATING` with `cleanActData=true` for automatic cleanup. For manual control, use `try-finally`:
 
 ```java
+// Preferred: automatic cleanup via annotation
+@FlowTest(cleanup = CleanupMode.SNAPSHOT_BASED)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 void testWithRealCommit() {
-    Long baseline = jdbcTemplate.queryForObject("SELECT COALESCE(MAX(id), 0) FROM t_order", Long.class);
+    // all data (arrange + act) cleaned up automatically after test
+}
+
+// Alternative: COMPENSATING with act data cleanup
+@FlowTest(cleanup = CleanupMode.COMPENSATING, cleanActData = true)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+void testWithRealCommit() {
+    // arrange + act data cleaned up automatically
+}
+
+// Manual: try-finally pattern
+void testWithManualCleanup() {
     try {
         // test logic
     } finally {
-        jdbcTemplate.update("DELETE FROM t_order WHERE id > ?", baseline);
-        flow.cleanup();
+        flow.cleanup();  // takes before snapshot on-demand, then cleans up
     }
 }
 ```
