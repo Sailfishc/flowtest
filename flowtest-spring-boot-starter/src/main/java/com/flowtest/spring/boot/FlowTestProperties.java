@@ -4,7 +4,9 @@ import com.flowtest.core.lifecycle.CleanupMode;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Configuration properties for FlowTest framework.
@@ -80,6 +82,24 @@ public class FlowTestProperties {
      * created during the act() phase.
      */
     private boolean cleanActData = false;
+
+    /**
+     * Multi-datasource configuration.
+     * Keys are DataSource bean names; values specify optional explicit table lists.
+     *
+     * <p>Example:
+     * <pre>{@code
+     * flowtest:
+     *   datasources:
+     *     orderDs:
+     *       tables: [t_order, t_product]
+     *     userDs:
+     *       tables: [t_user, t_account]
+     * }</pre>
+     *
+     * <p>If no tables are specified, they are auto-discovered from database metadata.
+     */
+    private Map<String, DataSourceProperties> datasources = new LinkedHashMap<>();
 
     // Getters and Setters
 
@@ -169,5 +189,33 @@ public class FlowTestProperties {
 
     public void setCleanActData(boolean cleanActData) {
         this.cleanActData = cleanActData;
+    }
+
+    public Map<String, DataSourceProperties> getDatasources() {
+        return datasources;
+    }
+
+    public void setDatasources(Map<String, DataSourceProperties> datasources) {
+        this.datasources = datasources;
+    }
+
+    /**
+     * Configuration for a single datasource in multi-datasource mode.
+     */
+    public static class DataSourceProperties {
+
+        /**
+         * Explicit table list (optional).
+         * If empty, tables are auto-discovered from database metadata.
+         */
+        private List<String> tables = new ArrayList<>();
+
+        public List<String> getTables() {
+            return tables;
+        }
+
+        public void setTables(List<String> tables) {
+            this.tables = tables;
+        }
     }
 }

@@ -1,825 +1,929 @@
 # FlowTest
 
-[![Java](https://img.shields.io/badge/Java-1.8-orange)](https://openjdk.org/projects/jdk8/)
-[![Spring Boot](https://img.shields.io/badge/Spring%20Boot-2.7.18-brightgreen)](https://spring.io/projects/spring-boot)
-[![JUnit](https://img.shields.io/badge/JUnit-5.9.3-blue)](https://junit.org/junit5/)
-
-一个专注于数据库测试的 Java 集成测试框架，采用代码优先(Code-First)的设计理念和流畅的 DSL 接口。
-
-## 简介
-
-FlowTest 提供了一种简洁、直观的方式来编写集成测试，特别是针对数据库操作的场景。它遵循 **Arrange-Act-Assert** 模式，支持：
-
-- 自动生成测试数据（基于 EasyRandom）
-- 流畅的测试 DSL
-- 数据库变更快照和差异检测
-- 可组合的实体特征(Traits)
-- 多种清理策略
-
-## 核心特性
-
-```infographic
-infographic list-grid-badge-card
-data
-  title 核心特性
-  items
-    - label 流畅 DSL
-      desc Arrange-Act-Assert 模式的链式调用
-      icon mdi:script-text-outline
-    - label 自动数据生成
-      desc 使用 EasyRandom 自动填充实体字段
-      icon mdi:auto-fix
-    - label 快照差异检测
-      desc 检测数据库表的新增、修改、删除
-      icon mdi:database-sync
-    - label 特征组合
-      desc 可复用、可组合的实体配置
-      icon mdi:puzzle
-    - label 多清理策略
-      desc 事务回滚、快照恢复、补偿删除
-      icon mdi:trash-can-outline
-    - label Spring Boot 集成
-      desc 开箱即用的自动配置
-      icon mdi:spring
-```
-
-## 模块结构
-
-```infographic
-infographic hierarchy-mindmap-curved-line-compact-card
-data
-  title 模块架构
-  items
-    - label flowtest-parent
-      desc Maven 父项目
-      children
-        - label flowtest-core
-          desc 核心框架
-          children
-            - label 测试流程
-              desc TestFlow, ArrangeBuilder, ActPhase, AssertPhase
-            - label 数据填充
-              desc AutoFiller, InstancioFiller, Traits
-            - label 快照引擎
-              desc SnapshotEngine, SnapshotDiff, TableSnapshot
-            - label 生命周期
-              desc CleanupStrategy, CleanupMode
-        - label flowtest-assertj-db
-          desc AssertJ-DB 集成
-        - label flowtest-junit5
-          desc JUnit 5 扩展
-        - label flowtest-spring-boot-starter
-          desc Spring Boot 自动配置
-        - label flowtest-demo
-          desc 示例应用
-```
-
-## flowtest-core 核心模块
-
-flowtest-core 是 FlowTest 框架的核心模块，提供了完整的测试基础设施，包括测试流程管理、数据自动填充、数据库快照差异检测、生命周期清理等功能。
-
-### 核心组件
-
-#### 1. TestFlow - 测试流程入口
-
-`TestFlow` 是框架的主入口点，提供流畅的 DSL 接口来组织测试。
+FlowTest 是一个 **Code-First** 的 Java 集成测试框架，提供流式 DSL 来简化数据库相关的测试。它遵循 **Arrange-Act-Assert** 模式，支持自动生成测试数据、自动追踪数据库变更、测试后自动清理。
 
 ```java
-@Autowired TestFlow flow;
+@FlowTest
+@SpringBootTest
+class OrderServiceTest {
 
-flow.arrange()
-    .add(User.class, UserTraits.vip())
-    .persist()
-    .act(() -> service.doSomething())
-    .assertThat()
-    .noException();
-```
+    @Autowired TestFlow flow;
+    @Autowired OrderService orderService;
 
-**主要方法：**
-- `arrange()` - 开始 Arrange 阶段，返回 `ArrangeBuilder`
-- `get(Class)` / `get(String, Class)` / `getAll(Class)` - 获取上下文中的实体
-- `cleanup()` - 手动清理测试数据
-
-#### 2. ArrangeBuilder - 准备阶段构建器
-
-用于创建和持久化测试实体。
-
-**添加单个实体：**
-```java
-flow.arrange()
-    .add(User.class, UserTraits.vip())                    // 使用 Trait
-    .add("product", Product.class, ProductTraits.price(100)) // 使用别名
-    .persist();
-```
-
-**批量添加实体：**
-```java
-flow.arrange()
-    .addMany(User.class, 5, UserTraits.normal()) // 添加 5 个普通用户
-    .persist();
-```
-
-**使用 Lambda 配置：**
-```java
-flow.arrange()
-    .add(User.class, user -> {
-        user.setName("John");
-        user.setLevel(UserLevel.VIP);
-    })
-    .addMany(Order.class, 3, (order, index) -> {
-        order.setOrderNumber("ORD-" + index);
-    })
-    .persist();
-```
-
-**只构建不持久化（用于调试）：**
-```java
-flow.arrange()
-    .add(User.class, UserTraits.vip())
-    .build(); // 只构建，不存数据库
-```
-
-#### 3. ActPhase - 执行阶段
-
-执行被测业务逻辑并捕获结果。
-
-```java
-.act(() -> orderService.createOrder(userId, productId))     // 无返回值
-.act(() -> orderService.calculateTotal(orderId))            // 有返回值
-```
-
-#### 4. AssertBuilder - 断言阶段构建器
-
-提供丰富的断言 API，包括异常断言、返回值断言、数据库变更断言等。
-
-**异常断言：**
-```java
-.assertThat()
-    .exception(InsufficientBalanceException.class)
-    .hasMessageContaining("余额不足")
-    .and().dbChanges(db -> db.table("t_order").hasNoChanges());
-```
-
-**返回值断言：**
-```java
-.assertThat()
-    .noException()
-    .returnValue(order -> {
-        assertThat(order.getTotalAmount()).isEqualByComparingTo("200.00");
-    });
-```
-
-**Fluent Result 断言：**
-```java
-.assertThat()
-    .result()
-        .has(Order::getStatus, OrderStatus.CREATED)
-        .has(Order::getTotalAmount, BigDecimal.valueOf(180))
-    .and().created(Order.class);
-```
-
-**实体状态断言：**
-```java
-.assertThat()
-    .entity(User.class)
-        .has(User::getBalance, BigDecimal.valueOf(800))  // 断言 arrange 的实体在 act 后的状态
-    .and().created(Order.class);
-```
-
-**新增行断言：**
-```java
-.assertThat()
-    .newRow(Order.class)
-        .matching("user_id", userId)
-        .has(Order::getStatus, OrderStatus.CREATED)
-    .and().noException();
-```
-
-**数据库变更断言：**
-```java
-.assertThat()
-    .dbChanges(db -> db
-        .table("t_order").hasNewRows(1)
-        .table("t_user").hasModifiedRows(1)
-            .modifiedRow(0)
-                .column("balance").changedFrom(1000.00).to(800.00)
-        .table("t_product").hasDeletedRows(1)
-    );
-```
-
-**快捷断言方法：**
-```java
-.assertThat()
-    .noException()
-    .created(Order.class)              // 等价于 .dbChanges(db -> db.table("t_order").hasNewRows(1))
-    .created(Order.class, 3)            // 断言创建 3 行
-    .modified(User.class)               // 断言修改 1 行
-    .modified(User.class, 2)            // 断言修改 2 行
-    .deleted(Product.class)             // 断言删除 1 行
-    .unchanged(Order.class)             // 断言无变更
-    .onlyChanged(Order.class, User.class) // 只有这两个表有变更
-    .noDatabaseChanges();              // 所有被监控的表都无变更
-```
-
-#### 5. DataFiller - 数据自动填充
-
-`DataFiller` 接口用于自动填充实体字段，支持两种实现：
-
-**AutoFiller（基于 EasyRandom）：**
-```java
-// 使用默认配置
-AutoFiller filler = new AutoFiller();
-
-// 使用自定义配置
-AutoFiller customFiller = AutoFiller.builder()
-    .seed(12345L)
-    .stringLengthRange(5, 10)
-    .collectionSizeRange(0, 3)
-    .randomizationDepth(2)
-    .build();
-```
-
-**InstancioFiller（基于 Instancio，可选）：**
-```java
-InstancioFiller filler = InstancioFiller.builder()
-    .withSettings(settings -> settings.maxDepth(3))
-    .build();
-```
-
-#### 6. Traits - 可组合的实体特征
-
-`Trait<T>` 是函数式接口，用于定义可复用、可组合的实体配置。
-
-**定义 Trait：**
-```java
-public class UserTraits {
-    public static Trait<User> vip() {
-        return user -> user.setLevel(UserLevel.VIP);
-    }
-
-    public static Trait<User> balance(double amount) {
-        return user -> user.setBalance(BigDecimal.valueOf(amount));
-    }
-
-    // 组合 Trait
-    public static Trait<User> richVip() {
-        return Trait.compose(vip(), balance(10000.00));
-        // 或 return vip().and(balance(10000.00));
+    @Test
+    void testCreateOrder() {
+        flow.arrange()
+            .add(User.class, UserTraits.vip(), UserTraits.balance(1000))
+            .add(Product.class, ProductTraits.price(200))
+            .persist()
+            .act(() -> orderService.createOrder(
+                flow.get(User.class).getId(),
+                flow.get(Product.class).getId()))
+            .assertThat()
+                .noException()
+                .created(Order.class)
+                .entity(User.class)
+                    .has(User::getBalance, BigDecimal.valueOf(800))
+                .and()
+                .newRow(Order.class)
+                    .has(Order::getStatus, OrderStatus.CREATED);
     }
 }
 ```
 
-**使用 Trait：**
-```java
-flow.arrange()
-    .add(User.class, UserTraits.richVip())
-    .add(User.class, UserTraits.normal(), UserTraits.balance(500.00))
-    .persist();
-```
+---
 
-#### 7. SnapshotEngine - 数据库快照引擎
+## 目录
 
-`SnapshotEngine` 提供数据库表快照捕获和差异计算功能。
+- [快速开始](#快速开始)
+- [核心概念](#核心概念)
+  - [Arrange-Act-Assert 流程](#arrange-act-assert-流程)
+  - [Trait 特征系统](#trait-特征系统)
+  - [数据自动填充](#数据自动填充)
+  - [实体元数据解析](#实体元数据解析)
+- [断言 API](#断言-api)
+  - [异常断言](#异常断言)
+  - [返回值断言](#返回值断言)
+  - [数据库变更断言](#数据库变更断言)
+  - [实体状态断言](#实体状态断言)
+  - [新行断言](#新行断言)
+  - [快捷断言](#快捷断言)
+- [清理策略](#清理策略)
+- [多数据源支持](#多数据源支持)
+- [Mockito 集成](#mockito-集成)
+- [配置参考](#配置参考)
+- [常见问题](#常见问题)
 
-**主要功能：**
-- 自动检测主键列（支持自定义）
-- 捕获完整行数据用于变更检测
-- 计算快照差异（新增、修改、删除）
-- 列出数据库中的所有用户表
-
-**配置主键列：**
-```java
-// 自动检测（默认，从数据库元数据获取）
-SnapshotEngine engine = new SnapshotEngine(dataSource);
-
-// 手动配置主键列
-engine.setTableIdColumn("t_user_info", "user_id");
-
-// 注册实体类（自动提取表名和主键列）
-engine.withEntityMetadata(User.class, Order.class);
-```
-
-#### 8. CleanupStrategy - 清理策略
-
-flowtest-core 提供四种清理策略，通过 `CleanupMode` 枚举指定。
-
-| 策略 | 适用场景 | 速度 | 数据隔离 |
-|------|----------|------|----------|
-| `TRANSACTION` | 默认，最常用 | ⭐⭐⭐⭐⭐ | 完全 |
-| `COMPENSATING` | 异步操作、REQUIRES_NEW 事务 | ⭐⭐⭐ | 完全 |
-| `SNAPSHOT_BASED` | 需要清理业务产生的数据 | ⭐⭐⭐ | 完全 |
-| `NONE` | 调试、手动检查 | N/A | 无 |
-
-**TRANSACTION（L1，默认）：**
-```java
-@Transactional  // Spring 自动回滚事务
-@Test
-void testWithTransaction() {
-    flow.arrange()...
-    // 测试完成后自动回滚
-}
-```
-
-**COMPENSATING（L2）：**
-```java
-@FlowTest(cleanup = CleanupMode.COMPENSATING)
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Test
-void testWithCompensatingCleanup() {
-    // 测试完成后物理删除所有创建的实体
-}
-```
-
-**SNAPSHOT_BASED（L3）：**
-```java
-@FlowTest(cleanup = CleanupMode.SNAPSHOT_BASED)
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Test
-void testWithSnapshotCleanup() {
-    // 测试完成后删除 persist() 和 act() 阶段创建的所有数据
-}
-```
-
-**NONE：**
-```java
-@FlowTest(cleanup = CleanupMode.NONE)
-@Test
-void testWithoutCleanup() {
-    // 数据保留，用于调试
-}
-```
+---
 
 ## 快速开始
 
-### 1. 添加依赖
+### 1. 引入依赖
 
-**Maven:**
+Spring Boot 项目只需引入一个 starter，自动包含核心框架、JUnit 5 扩展、AssertJ-DB 集成：
 
 ```xml
 <dependency>
-    <groupId>com.flowtest</groupId>
+    <groupId>com.github.Sailfishc</groupId>
     <artifactId>flowtest-spring-boot-starter</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <scope>test</scope>
 </dependency>
 ```
 
-**Gradle:**
+Starter 自动配置以下 Bean，无需手动创建：
 
-```groovy
-testImplementation 'com.flowtest:flowtest-spring-boot-starter:1.0.0-SNAPSHOT'
+| Bean | 作用 |
+|------|------|
+| `DataFiller` | 自动填充实体字段（默认 EasyRandom，可选 Instancio） |
+| `EntityPersister` | 通过 JDBC 插入/删除实体 |
+| `SnapshotEngine` | 数据库快照与变更追踪 |
+| `TestFlow` | 测试入口，注入到测试类中使用 |
+
+如需 Mockito 集成或 TestNG 支持，额外引入对应模块：
+
+```xml
+<!-- Mockito 集成（可选） -->
+<dependency>
+    <groupId>com.github.Sailfishc</groupId>
+    <artifactId>flowtest-mockito</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <scope>test</scope>
+</dependency>
+
+<!-- TestNG 支持（可选，与 JUnit 5 二选一） -->
+<dependency>
+    <groupId>com.github.Sailfishc</groupId>
+    <artifactId>flowtest-testng</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
+    <scope>test</scope>
+</dependency>
 ```
 
-### 2. 编写测试
+### 2. 写第一个测试
 
 ```java
-@FlowTest
+@FlowTest                      // 启用 FlowTest，默认使用事务回滚清理
 @SpringBootTest
-@Transactional
-class OrderServiceTest {
+class UserServiceTest {
 
-    @Autowired TestFlow flow;
-    @Autowired OrderService orderService;
+    @Autowired TestFlow flow;   // 注入测试入口
+    @Autowired UserService userService;
 
     @Test
-    void testNormalUserCreateOrder() {
+    void testDeductBalance() {
         flow.arrange()
-                .add(User.class, UserTraits.normal(), UserTraits.balance(1000.00))
-                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+            .add(User.class, u -> u.setBalance(BigDecimal.valueOf(1000)))
             .persist()
-            .act(() -> orderService.createOrder(
-                    flow.get(User.class).getId(),
-                    flow.get(Product.class).getId(),
-                    2))
+            .act(() -> userService.deductBalance(
+                flow.get(User.class).getId(),
+                BigDecimal.valueOf(300)))
             .assertThat()
                 .noException()
-                .dbChanges(db -> db
-                    .table("t_order").hasNewRows(1));
+                .entity(User.class)
+                    .has(User::getBalance, BigDecimal.valueOf(700));
+        // 测试结束后自动回滚，数据库无残留
     }
 }
 ```
+
+关键点：
+- `@FlowTest` 注解启用框架，处理生命周期
+- `@Autowired TestFlow flow` 注入测试入口
+- `add()` 自动填充实体的所有字段，你只需设置测试关心的字段
+- `persist()` 将实体写入数据库
+- `act()` 执行被测业务逻辑
+- `assertThat()` 开始断言
+
+---
 
 ## 核心概念
 
-### Arrange-Act-Assert 模式
+### Arrange-Act-Assert 流程
 
-FlowTest 遵循 AAA 测试模式：
+FlowTest 的核心是三阶段的链式 API：
 
-```infographic
-infographic sequence-snake-steps-simple
-data
-  title 测试流程
-  items
-    - label Arrange
-      desc 准备测试数据和环境
-    - label Act
-      desc 执行被测的业务逻辑
-    - label Assert
-      desc 验证结果和数据库变更
+```
+flow.arrange()          → ArrangeBuilder    准备测试数据
+    .persist()          → ActPhase          写入数据库
+    .act(...)           → AssertPhase       执行业务逻辑
+    .assertThat()       → AssertBuilder     验证结果
 ```
 
-### 特征 (Traits)
+#### Arrange 阶段 —— 创建测试数据
 
-Traits 是可复用的实体配置函数：
+```java
+// 基本用法：添加一个实体，字段自动填充
+.add(User.class)
+
+// 应用 Trait（可复用的配置函数）
+.add(User.class, UserTraits.vip(), UserTraits.balance(100))
+
+// Lambda 配置
+.add(User.class, u -> {
+    u.setUsername("alice");
+    u.setBalance(BigDecimal.valueOf(1000));
+})
+
+// 别名 —— 同类型多个实体时用于区分
+.add("buyer", User.class, u -> u.setBalance(BigDecimal.valueOf(1000)))
+.add("seller", User.class, u -> u.setBalance(BigDecimal.valueOf(500)))
+
+// 批量添加
+.addMany(Product.class, 5)
+
+// 批量添加 + 按索引配置
+.addMany(Product.class, 3, (p, index) -> p.setPrice(BigDecimal.valueOf(100 * (index + 1))))
+```
+
+`persist()` 将实体写入数据库并记录生成的 ID；`build()` 只创建实体不写库（用于调试）。
+
+#### 获取已创建的实体
+
+```java
+flow.get(User.class)               // 获取第一个 User
+flow.get(User.class, 0)            // 按索引获取
+flow.get("buyer", User.class)      // 按别名获取
+flow.getAll(User.class)            // 获取所有 User（返回 List）
+```
+
+#### Act 阶段 —— 执行业务逻辑
+
+```java
+// 无返回值
+.act(() -> orderService.cancelOrder(orderId))
+
+// 有返回值（可在 Assert 阶段验证）
+.act(() -> orderService.createOrder(userId, productId))
+```
+
+`act()` 会捕获业务逻辑抛出的异常，供后续 `exception()` 断言使用。
+
+### Trait 特征系统
+
+Trait 是一个函数式接口，用来定义可复用、可组合的实体配置。**建议为每个实体创建一个 Traits 类**：
 
 ```java
 public class UserTraits {
+
     public static Trait<User> vip() {
-        return user -> user.setLevel(UserLevel.VIP);
+        return u -> u.setLevel(UserLevel.VIP);
     }
 
     public static Trait<User> balance(double amount) {
-        return user -> user.setBalance(BigDecimal.valueOf(amount));
+        return u -> u.setBalance(BigDecimal.valueOf(amount));
     }
 
-    // 组合多个特征
+    public static Trait<User> named(String name) {
+        return u -> u.setUsername(name);
+    }
+
+    // 组合 Trait
     public static Trait<User> richVip() {
-        return vip().and(balance(10000.00));
+        return vip().and(balance(10000));
     }
 }
 ```
 
-### 实体管理
+使用方式：
 
 ```java
-// 获取第一个实体
-User user = flow.get(User.class);
+// 可变参数 —— 按顺序应用
+.add(User.class, UserTraits.vip(), UserTraits.balance(1000))
 
-// 通过别名获取
-User rich = flow.get("richUser", User.class);
+// .and() 链式组合
+.add(User.class, UserTraits.vip().and(UserTraits.balance(1000)))
 
-// 通过索引获取
-User first = flow.get(User.class, 0);
+// Trait.compose() 静态组合
+.add(User.class, Trait.compose(UserTraits.vip(), UserTraits.balance(1000), UserTraits.named("alice")))
+```
 
-// 获取所有实体
-List<User> allUsers = flow.getAll(User.class);
+### 数据自动填充
+
+`DataFiller` 会自动填充实体的全部字段（String 填随机字符串、Number 填随机数字……），你只需要覆盖测试相关的字段：
+
+```java
+// username、email、createdAt 等字段全部自动填充
+// 你只需要关注 balance 这一个字段
+.add(User.class, u -> u.setBalance(BigDecimal.valueOf(1000)))
+```
+
+两种引擎可选：
+
+| 引擎 | 配置值 | 特点 |
+|------|--------|------|
+| **EasyRandom**（默认） | `easyrandom` | 稳定可靠，支持 seed 重放 |
+| **Instancio** | `instancio` | 更强的类型推断，支持 JPA 注解感知 |
+
+在 `application.yml` 中切换：
+
+```yaml
+flowtest:
+  data-filler: instancio    # 默认 easyrandom
+  seed: 12345                # 固定种子，让测试数据可重放（0 = 随机）
+  string-length-min: 5
+  string-length-max: 20
+```
+
+### 实体元数据解析
+
+FlowTest 通过反射自动解析实体类的表名、列名、ID 字段。**无需编译期依赖 JPA**——框架在运行时通过反射读取注解。
+
+**表名解析优先级**：
+1. `@Table(name = "t_user")` — JPA
+2. `@TableName("t_user")` — MyBatis-Plus
+3. `@Entity(name = "t_user")` — JPA
+4. 类名驼峰转下划线：`UserInfo` → `user_info`
+
+**ID 字段解析优先级**：
+1. `@Id` — JPA
+2. `@TableId` — MyBatis-Plus
+3. 名为 `id` 的字段
+
+**列名解析优先级**：
+1. `@Column(name = "user_name")` — JPA
+2. `@TableField("user_name")` — MyBatis-Plus
+3. 字段名驼峰转下划线：`userName` → `user_name`
+
+不加任何注解也能正常工作。
+
+---
+
+## 断言 API
+
+### 异常断言
+
+验证业务方法抛出了预期异常：
+
+```java
+.act(() -> userService.deductBalance(userId, BigDecimal.valueOf(9999)))
+.assertThat()
+    .exception(InsufficientBalanceException.class)
+        .hasMessageContaining("余额不足")
+        .satisfies(e -> assertThat(e.getErrorCode()).isEqualTo(400))
+    .and()                                  // 返回 AssertBuilder，可以继续断言
+    .unchanged(User.class);                 // 异常时用户余额不应变化
+```
+
+`exception()` 的方法：
+- `.hasMessage("完整消息")` — 精确匹配
+- `.hasMessageContaining("部分消息")` — 包含匹配
+- `.satisfies(e -> ...)` — 自定义断言
+- `.and()` — 返回 AssertBuilder
+
+验证无异常：
+
+```java
+.assertThat().noException()
+```
+
+### 返回值断言
+
+**Lambda 风格**（适合复杂断言）：
+
+```java
+.act(() -> orderService.createOrder(userId, productId))
+.assertThat()
+    .returnValue(order -> {
+        assertThat(order).isNotNull();
+        assertThat(order.getTotalAmount()).isEqualByComparingTo("200.00");
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CREATED);
+    });
+```
+
+**方法引用风格**（更简洁）：
+
+```java
+.assertThat()
+    .result()
+        .isNotNull()
+        .has(Order::getStatus, OrderStatus.CREATED)
+        .has(Order::getTotalAmount, BigDecimal.valueOf(200))
+    .and()                      // 返回 AssertBuilder
+    .created(Order.class);
+```
+
+**直接获取返回值**：
+
+```java
+Order order = flow.arrange()
+    ...
+    .assertThat()
+    .getResult();
 ```
 
 ### 数据库变更断言
 
+`dbChanges()` 提供最细粒度的数据库变更断言。框架自动在 `persist()` 前后拍摄快照，然后计算差异。
+
 ```java
 .assertThat()
     .dbChanges(db -> db
-        .table("t_order").hasNewRows(1)
-        .table("t_user").hasModifiedRows(1)
-            .modifiedRow(0)
-                .column("balance").changedFrom(1000.00).to(800.00)
-        .table("t_product").hasDeletedRows(1)
-    );
+
+        // 新增行断言
+        .table("t_order")
+            .hasNewRows(1)
+            .row(0)                                         // 第一行新增数据
+                .value("status").isEqualTo("CREATED")
+                .value("amount").isEqualTo(200)
+                .value("created_at").isNotNull()
+
+        // 修改行断言
+        .table("t_user")
+            .hasModifiedRows(1)
+            .modifiedRow(0)                                 // 第一行修改
+                .column("balance").changedFrom(1000).to(800)
+                .column("updated_at").wasModified()
+                .column("username").wasNotModified()
+
+        // 通过主键定位修改行
+        .table("t_user")
+            .modifiedRowWithId(userId)
+                .column("balance").changedFrom(1000).to(800)
+
+        // 删除行断言
+        .table("t_order")
+            .hasDeletedRows(2)
+
+        // 无变化断言
+        .table("t_product")
+            .hasNoChanges()
+    )
 ```
 
-## 完整示例
+### 实体状态断言
 
-### 定义实体
+验证 arrange 阶段创建的实体，在 act 之后的数据库状态（从数据库重新读取）：
 
 ```java
-@Entity
-@Table(name = "t_user")
-public class User {
-    @Id
-    private Long id;
-    private BigDecimal balance;
-    private UserLevel level;
-    // getters and setters
+.assertThat()
+    // 按类型（取第一个）
+    .entity(User.class)
+        .has(User::getBalance, BigDecimal.valueOf(800))
+        .has(User::getLevel, UserLevel.VIP)
+    .and()
+
+    // 按别名
+    .entity("buyer", User.class)
+        .has(User::getBalance, BigDecimal.valueOf(200))
+    .and()
+
+    // 按索引
+    .entity(User.class, 1)
+        .has(User::getBalance, BigDecimal.valueOf(1000))
+    .and()
+
+    // 也支持直接用列名
+    .entity(User.class)
+        .has("balance", BigDecimal.valueOf(800))
+```
+
+### 新行断言
+
+验证 act 阶段新插入的行（不是 arrange 创建的，而是业务逻辑产生的）：
+
+```java
+.assertThat()
+    // 只有一条新行时，直接断言
+    .newRow(Order.class)
+        .has(Order::getStatus, OrderStatus.CREATED)
+        .has(Order::getTotalAmount, BigDecimal.valueOf(200))
+    .and()
+
+    // 多条新行时，用 matching 定位到具体行
+    .newRow(OrderItem.class)
+        .matching(OrderItem::getProductId, productId)
+        .has(OrderItem::getQuantity, 2)
+```
+
+### 快捷断言
+
+不需要写 `dbChanges()` 的简化方式，适合只关心行数不关心具体内容的场景：
+
+```java
+.assertThat()
+    .noException()
+    .created(Order.class)                   // 新增 1 行
+    .created(OrderItem.class, 3)            // 新增 3 行
+    .modified(User.class)                   // 修改 1 行
+    .modified(User.class, 2)                // 修改 2 行
+    .deleted(Product.class)                 // 删除 1 行
+    .unchanged(Product.class)               // 无变化
+    .onlyChanged(Order.class, User.class)   // 只有这些表有变化，其他表不变
+    .noDatabaseChanges()                    // 所有监控的表都无变化
+```
+
+---
+
+## 清理策略
+
+FlowTest 在每个测试结束后自动清理测试数据。通过 `@FlowTest(cleanup = ...)` 指定策略。
+
+| 策略 | 清理 arrange 数据 | 清理 act 数据 | 需要真实提交 | 适用场景 |
+|------|:-:|:-:|:-:|----------|
+| `TRANSACTION`（默认） | Yes | Yes | No | 绝大多数测试 |
+| `COMPENSATING` | Yes | 默认 No，可选 Yes | Yes | 异步消息、REQUIRES_NEW |
+| `SNAPSHOT_BASED` | Yes | Yes | Yes | 需要真实提交且全面清理 |
+| `NONE` | No | No | — | 调试时保留数据检查 |
+
+### TRANSACTION（默认，推荐）
+
+利用 Spring `@Transactional` 回滚。最快、最简单，**大多数测试用这个就够了**：
+
+```java
+@FlowTest   // 默认 cleanup = CleanupMode.TRANSACTION
+@SpringBootTest
+class OrderServiceTest {
+    @Test
+    void testCreateOrder() {
+        flow.arrange().add(User.class).persist()
+            .act(() -> orderService.createOrder(...))
+            .assertThat().noException();
+        // 测试结束自动回滚，数据库干净如初
+    }
 }
 ```
 
-### 定义特征
+### COMPENSATING
+
+通过物理 DELETE 删除 `persist()` 阶段创建的数据。适用于需要真实提交的场景（异步操作、分布式事务等）：
 
 ```java
-public class UserTraits {
-    public static Trait<User> normal() {
-        return user -> user.setLevel(UserLevel.NORMAL);
-    }
+@FlowTest(cleanup = CleanupMode.COMPENSATING)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)   // 禁用事务以真实提交
+@Test
+void testAsyncProcess() {
+    flow.arrange().add(User.class).persist()
+        .act(() -> asyncService.process(flow.get(User.class).getId()))
+        .assertThat().noException();
+    // persist 阶段创建的 User 被 DELETE
+    // act 阶段产生的数据默认不清理
+}
+```
 
-    public static Trait<User> vip() {
-        return user -> user.setLevel(UserLevel.VIP);
-    }
+如果也需要清理 act 阶段的数据，开启 `cleanActData`：
 
-    public static Trait<User> balance(double amount) {
-        return user -> user.setBalance(BigDecimal.valueOf(amount));
-    }
+```java
+@FlowTest(cleanup = CleanupMode.COMPENSATING, cleanActData = true)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Test
+void testWithActDataCleanup() {
+    // act 阶段新增的行也会被自动清理
+}
+```
 
-    public static Trait<User> richVip() {
-        return vip().and(balance(10000.00));
+### SNAPSHOT_BASED
+
+通过 before/after 快照对比主键集合，删除所有新增行。最全面的清理策略，支持任意主键类型（数字、UUID、字符串）：
+
+```java
+@FlowTest(cleanup = CleanupMode.SNAPSHOT_BASED)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)
+@Test
+void testWithFullCleanup() {
+    flow.arrange().add(User.class).persist()
+        .act(() -> orderService.createOrder(...))
+        .assertThat().noException().created(Order.class);
+    // User 和 Order 都会被清理
+}
+```
+
+### 手动清理
+
+在不使用注解的场景下，可以手动调用 `flow.cleanup()`：
+
+```java
+@Test
+void testManualCleanup() {
+    try {
+        flow.arrange().add(User.class).persist();
+        // ... 测试逻辑 ...
+    } finally {
+        flow.cleanup();   // 手动触发清理
     }
 }
 ```
 
-### 编写测试
+---
+
+## 多数据源支持
+
+当应用使用多个数据库时（如订单库、用户库），FlowTest 可以自动将实体路由到正确的数据源。**测试代码无需任何修改**。
+
+### 配置方式
+
+在 `application.yml` 中声明数据源映射：
+
+```yaml
+# 方式一：自动发现（最简单）
+# 只需声明数据源 Bean 名称，FlowTest 自动查询每个库的表元数据
+flowtest:
+  datasources:
+    orderDataSource: {}
+    userDataSource: {}
+
+# 方式二：显式指定表名
+flowtest:
+  datasources:
+    orderDataSource:
+      tables:
+        - t_order
+        - t_order_item
+        - t_product
+    userDataSource:
+      tables:
+        - t_user
+        - t_account
+
+# 方式三：通配符匹配（推荐）
+# * 匹配零个或多个字符
+flowtest:
+  datasources:
+    orderDataSource:
+      tables:
+        - t_order*          # 匹配 t_order, t_order_item, t_order_detail...
+        - t_product
+    userDataSource:
+      tables:
+        - t_user*           # 匹配 t_user, t_user_info, t_user_role...
+        - t_account
+
+# 三种方式可以混用
+flowtest:
+  datasources:
+    orderDataSource:
+      tables: [t_order*, t_product, t_payment]
+    userDataSource: {}       # 自动发现
+```
+
+### 通配符说明
+
+`*` 匹配任意数量的字符（包括零个）：
+
+| 模式 | 匹配 | 不匹配 |
+|------|------|--------|
+| `t_order*` | `t_order`、`t_order_item`、`t_order_detail` | `t_product` |
+| `*_log` | `access_log`、`error_log` | `t_log_detail` |
+| `t_*_log` | `t_access_log`、`t_error_log` | `t_log` |
+| `*order*` | `t_order`、`t_order_item`、`my_order_table` | `t_product` |
+
+### 路由查找优先级
+
+1. **精确匹配** — 查找精确的表名映射
+2. **通配符匹配** — 查找 `*` 模式
+3. **默认数据源** — 以上都不匹配时，使用 Spring 上下文中未被配置的 DataSource
+
+### 数据源 Bean 配置
+
+确保 Spring 上下文中存在对应名称的 `DataSource` Bean：
+
+```java
+@Configuration
+class DataSourceConfig {
+
+    @Bean
+    @Primary
+    public DataSource orderDataSource() {
+        return DataSourceBuilder.create()
+            .url("jdbc:mysql://localhost:3306/order_db")
+            .build();
+    }
+
+    @Bean
+    public DataSource userDataSource() {
+        return DataSourceBuilder.create()
+            .url("jdbc:mysql://localhost:3306/user_db")
+            .build();
+    }
+}
+```
+
+### 测试代码无需改动
+
+路由完全透明，测试代码和单数据源时一模一样：
 
 ```java
 @FlowTest
 @SpringBootTest
-@Transactional
-class OrderServiceTest {
+class CrossDbTest {
 
     @Autowired TestFlow flow;
     @Autowired OrderService orderService;
 
     @Test
-    @DisplayName("普通用户创建订单")
-    void testNormalUserCreateOrder() {
+    void testCrossDbOrder() {
         flow.arrange()
-                .add(User.class, UserTraits.normal(), UserTraits.balance(1000.00))
-                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
+            .add(User.class, UserTraits.vip())          // → 自动路由到 userDataSource
+            .add(Product.class, ProductTraits.active())  // → 自动路由到 orderDataSource
             .persist()
             .act(() -> orderService.createOrder(
-                    flow.get(User.class).getId(),
-                    flow.get(Product.class).getId(),
-                    2))
+                flow.get(User.class).getId(),
+                flow.get(Product.class).getId()))
             .assertThat()
                 .noException()
-                .returnValue(order -> {
-                    assertThat(order).isNotNull();
-                    assertThat(order.getTotalAmount()).isEqualByComparingTo("200.00");
-                })
                 .dbChanges(db -> db
-                    .table("t_order").hasNewRows(1)
-                    .table("t_user").hasModifiedRows(1)
-                        .modifiedRow(0)
-                            .column("balance").changedFrom(1000.00).to(800.00)
-                );
-    }
-
-    @Test
-    @DisplayName("VIP用户享受折扣")
-    void testVipUserDiscount() {
-        flow.arrange()
-                .add(User.class, UserTraits.vip(), UserTraits.balance(1000.00))
-                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
-            .persist()
-            .act(() -> orderService.createOrder(
-                    flow.get(User.class).getId(),
-                    flow.get(Product.class).getId(),
-                    2))
-            .assertThat()
-                .noException()
-                .returnValue(order -> {
-                    // 200 * 0.9 = 180
-                    assertThat(order.getTotalAmount()).isEqualByComparingTo("180.00");
-                });
-    }
-
-    @Test
-    @DisplayName("余额不足抛出异常")
-    void testInsufficientBalance() {
-        flow.arrange()
-                .add(User.class, UserTraits.normal(), UserTraits.balance(10.00))
-                .add(Product.class, ProductTraits.price(100.00), ProductTraits.inStock(10))
-            .persist()
-            .act(() -> orderService.createOrder(
-                    flow.get(User.class).getId(),
-                    flow.get(Product.class).getId(),
-                    1))
-            .assertThat()
-                .exception(InsufficientBalanceException.class)
-                    .hasMessageContaining("余额不足")
-                .dbChanges(db -> db
-                    .table("t_order").hasNoChanges()
-                );
+                    .table("t_order").hasNewRows(1));    // → 自动路由到 orderDataSource
     }
 }
 ```
 
-## 高级特性
+### 不配置 datasources 时
 
-### 批量创建实体
+当 `application.yml` 中没有 `flowtest.datasources` 配置时，行为与之前完全一致——使用单个 DataSource，零影响。
 
-```java
-flow.arrange()
-        .addMany(User.class, 5, UserTraits.normal())
-        .persist();
+---
 
-List<User> users = flow.getAll(User.class);
-assertThat(users).hasSize(5);
-```
+## Mockito 集成
 
-### 使用别名区分实体
+`flowtest-mockito` 模块将 Mock 配置融入 FlowTest 的流式 API。
 
-```java
-flow.arrange()
-        .add("richUser", User.class, UserTraits.richVip())
-        .add("poorUser", User.class, UserTraits.poor())
-        .persist();
-
-User rich = flow.get("richUser", User.class);
-User poor = flow.get("poorUser", User.class);
-```
-
-### 自定义 AutoFiller
-
-```java
-// 配置 EasyRandom 参数
-AutoFiller customFiller = AutoFiller.builder()
-    .seed(12345)
-    .stringLengthRange(5, 10)
-    .collectionSizeRange(0, 3)
-    .build();
-```
-
-### 数据清理策略
-
-#### 1. 事务回滚 (默认)
+### 基本用法
 
 ```java
 @FlowTest
 @SpringBootTest
-@Transactional
-class TransactionalTest {
-    // 测试完成后自动回滚
-}
-```
+class PaymentTest {
 
-#### 2. 快照恢复
+    @Autowired TestFlow flow;
 
-```java
-@FlowTest(cleanup = CleanupMode.SNAPSHOT_BASED)
-@SpringBootTest
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-class SnapshotBasedTest {
-    // 测试完成后根据快照恢复数据
-}
-```
+    @Test
+    void testPaymentWithMock() {
+        MockTestFlow mockFlow = MockTestFlow.wrap(flow);
 
-#### 3. 补偿删除
-
-```java
-@FlowTest(cleanup = CleanupMode.COMPENSATING)
-@SpringBootTest
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-class CompensatingTest {
-    // 测试完成后删除创建的数据
-}
-```
-
-#### 4. 手动清理
-
-```java
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-void testWithManualCleanup() {
-    Long baseline = jdbcTemplate.queryForObject(
-        "SELECT COALESCE(MAX(id), 0) FROM t_order", Long.class);
-
-    try {
-        flow.arrange()
-            .add(User.class, UserTraits.normal())
+        mockFlow.arrange()
+            // 配置 Mock
+            .withMocks()
+                .mock(PaymentGateway.class)
+                    .when(gw -> gw.charge(any(), any()))
+                    .thenReturn(ChargeResult.success())
+                .done()
+            // 准备数据
+            .add(User.class, UserTraits.balance(1000))
+            .add(Order.class, OrderTraits.amount(500))
             .persist()
-            .act(() -> /* test logic */);
-    } finally {
-        jdbcTemplate.update("DELETE FROM t_order WHERE id > ?", baseline);
-        flow.cleanup();
+            // 执行
+            .act(() -> paymentService.processPayment(
+                mockFlow.getMock(PaymentGateway.class),
+                flow.get(Order.class).getId()))
+            // 断言
+            .assertThat()
+                .noException()
+                .mocks()
+                    .verify(PaymentGateway.class)
+                        .atLeastOnce()
+                        .called(gw -> gw.charge(any(), any()))
+                    .done();
     }
 }
 ```
 
-### 使用 AssertJ-DB 进行详细断言
+### MockTrait —— 可复用的 Mock 配置
+
+和实体 Trait 一样，Mock 配置也可以抽取为可复用的 MockTrait：
 
 ```java
-@Transactional(propagation = Propagation.NOT_SUPPORTED)
-void testWithFlowTestChanges() {
-    Long maxOrderId = jdbcTemplate.queryForObject(
-        "SELECT COALESCE(MAX(id), 0) FROM t_order", Long.class);
+public class PaymentMockTraits {
+    public static MockTrait<PaymentGateway> success() {
+        return config -> config
+            .when(gw -> gw.charge(any(), any()))
+            .thenReturn(ChargeResult.success());
+    }
 
-    FlowTestChanges changes = new FlowTestChanges(dataSource, "t_order")
-        .setStartPointNow();
-
-    try {
-        // 执行测试
-        flow.arrange()...
-    } finally {
-        changes.setEndPointNow();
-        changes.assertChanges()
-            .hasNumberOfChanges(1)
-            .changeOnTable("t_order").isCreation();
-
-        jdbcTemplate.update("DELETE FROM t_order WHERE id > ?", maxOrderId);
-        flow.cleanup();
+    public static MockTrait<PaymentGateway> failure(String reason) {
+        return config -> config
+            .when(gw -> gw.charge(any(), any()))
+            .thenThrow(new PaymentException(reason));
     }
 }
+
+// 使用
+.withMocks()
+    .mock(PaymentGateway.class, PaymentMockTraits.success())
+    .done()
 ```
 
-## 构建和运行
-
-### 编译项目
-
-```bash
-# 构建所有模块
-mvn clean install
-
-# 跳过测试构建
-mvn clean install -DskipTests
-```
-
-### 运行测试
-
-```bash
-# 运行所有测试
-mvn test
-
-# 运行特定模块的测试
-mvn test -pl flowtest-demo
-
-# 运行特定测试类
-mvn test -pl flowtest-demo -Dtest=OrderServiceTest
-
-# 运行特定测试方法
-mvn test -pl flowtest-demo -Dtest=OrderServiceTest#testNormalUserCreateOrder
-```
-
-## 技术栈
-
-| 技术 | 版本 |
-|------|------|
-| Java | 1.8+ |
-| Spring Boot | 2.7.18 |
-| JUnit Jupiter | 5.9.3 |
-| EasyRandom | 5.0.0 |
-| AssertJ Core | 3.24.2 |
-| AssertJ DB | 2.0.2 |
-| SLF4J | 1.7.36 |
-
-## 最佳实践
-
-### 1. 特征复用
-
-将常用的实体配置定义为 Traits，提高复用性：
+### 注册已有 Mock / Spy
 
 ```java
-// ✅ 好的做法
-.add(User.class, UserTraits.vip(), UserTraits.balance(1000.00))
+// 注册外部创建的 Mock
+PaymentGateway preConfigured = mock(PaymentGateway.class);
+when(preConfigured.charge(any(), any())).thenReturn(result);
 
-// ❌ 避免硬编码
-.add(User.class, user -> {
-    user.setLevel(UserLevel.VIP);
-    user.setBalance(new BigDecimal("1000.00"));
-})
+.withMocks()
+    .register(preConfigured)
+    .done()
+
+// Spy
+.withMocks()
+    .spy(realService)
+        .when(s -> s.sendNotification(any()))
+        .thenDoNothing()
+    .done()
 ```
 
-### 2. 合理使用 @Transactional
-
-大多数测试使用 `@Transactional` 即可，只有需要真实提交的场景才使用 `NOT_SUPPORTED`。
-
-### 3. 注意数据库保留字
-
-H2 数据库中 `user` 和 `order` 是保留字，使用 `t_` 前缀避免冲突。
-
-### 4. 使用 try-finally 确保清理
-
-非事务测试必须使用 try-finally 确保数据被清理：
+### Mock 验证
 
 ```java
-try {
-    // 测试逻辑
-} finally {
-    flow.cleanup();
-}
+.assertThat()
+    .noException()
+    .mocks()
+        .verify(PaymentGateway.class)
+            .times(1)                                         // 调用 1 次
+            .called(gw -> gw.charge(any(), any()))
+        .and()
+        .verify(NotificationService.class)
+            .never()                                          // 未调用
+            .called(ns -> ns.sendEmail(any()))
+        .done()
 ```
+
+---
+
+## 配置参考
+
+### application.yml 完整配置
+
+```yaml
+flowtest:
+  # 默认清理策略
+  cleanup-mode: TRANSACTION            # TRANSACTION | COMPENSATING | SNAPSHOT_BASED | NONE
+
+  # COMPENSATING 模式下是否清理 act 阶段数据
+  clean-act-data: false
+
+  # 数据填充引擎
+  data-filler: easyrandom              # easyrandom | instancio
+
+  # 随机种子（0 = 每次运行不同）
+  seed: 0
+
+  # 自动生成的字符串长度范围
+  string-length-min: 5
+  string-length-max: 20
+
+  # 自动生成的集合大小范围
+  collection-size-min: 1
+  collection-size-max: 3
+
+  # 嵌套对象最大深度
+  randomization-depth: 3
+
+  # 默认监控的表（空 = 自动从 persist 的实体推断）
+  snapshot-tables: []
+
+  # 主键列名回退值（自动检测失败时使用）
+  id-column-name: id
+
+  # 多数据源配置（可选，不配置则使用单数据源模式）
+  datasources:
+    orderDataSource:
+      tables: [t_order*, t_product]
+    userDataSource:
+      tables: [t_user*]
+```
+
+### @FlowTest 注解属性
+
+可加在类或方法上，方法级优先于类级：
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `cleanup` | `CleanupMode` | `TRANSACTION` | 清理策略 |
+| `snapshotTables` | `String[]` | `{}` | 监控的表（空 = 自动推断） |
+| `cleanActData` | `boolean` | `false` | 仅 COMPENSATING 模式生效 |
+
+```java
+// 类级配置 —— 所有测试方法生效
+@FlowTest(cleanup = CleanupMode.SNAPSHOT_BASED, snapshotTables = {"t_order", "t_user"})
+class OrderServiceTest { ... }
+
+// 方法级覆盖
+@FlowTest(cleanup = CleanupMode.NONE)
+@Test
+void debugTest() { ... }
+```
+
+---
 
 ## 常见问题
 
-### Q: 如何调试测试数据？
+### H2 保留字冲突
 
-A: 可以使用 `build()` 方法代替 `persist()` 来查看生成的实体而不持久化：
+`user`、`order` 是 H2 的保留字。建表时加 `t_` 前缀：
 
-```java
-flow.arrange()
-    .add(User.class, UserTraits.normal())
-    .build();  // 只构建不持久化
-
-User user = flow.get(User.class);
-System.out.println(user);
+```sql
+CREATE TABLE t_user (...);    -- OK
+CREATE TABLE t_order (...);   -- OK
+CREATE TABLE "user" (...);    -- 可以但不推荐
 ```
 
-### Q: 如何处理自定义 ID 生成？
+### @Transactional 与 SNAPSHOT_BASED/COMPENSATING 冲突
 
-A: AutoFiller 默认排除 `@Id` 字段，可以通过自定义配置覆盖：
+**不要**同时使用默认的 `@Transactional`（REQUIRED 传播级别）和 `SNAPSHOT_BASED`/`COMPENSATING` 清理——事务回滚会让这两种策略无法看到提交的数据。正确做法是禁用事务：
 
 ```java
-AutoFiller filler = AutoFiller.builder()
-    .excludeField(field -> !field.getName().equals("customId"))
-    .build();
+@FlowTest(cleanup = CleanupMode.SNAPSHOT_BASED)
+@Transactional(propagation = Propagation.NOT_SUPPORTED)   // 必须加
+@Test
+void testWithRealCommit() { ... }
 ```
 
-### Q: 如何测试非数据库操作？
+### 枚举字段持久化
 
-A: FlowTest 主要针对数据库场景，对于纯业务逻辑测试，可以使用普通的 JUnit 断言。
+FlowTest 自动将 Java 枚举转为 `.name()` 字符串存储，无需额外处理。
 
-## 贡献指南
+### AUTO_INCREMENT 不随事务回滚重置
 
-欢迎贡献代码、报告问题或提出建议！
+H2 的自增计数器不随事务回滚重置。FlowTest 内部使用行数对比（非 MAX(ID)）来计算新增行，不受影响。
 
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启 Pull Request
+### 不加注解的实体
 
-## 许可证
+FlowTest 不强制要求 JPA / MyBatis-Plus 注解。没有注解时自动推断：
+- `UserInfo` → 表名 `user_info`
+- `userName` → 列名 `user_name`
+- 名为 `id` 的字段 → 主键
 
-本项目采用 Apache 2.0 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+### 并行测试
 
-## 联系方式
+FlowTest 使用 `ThreadLocal` 隔离每个测试的上下文，天然支持 JUnit 5 和 TestNG 的并行执行。
 
-- 提交 Issue: [GitHub Issues](https://github.com/yourusername/flowtest/issues)
-- 文档: [Wiki](https://github.com/yourusername/flowtest/wiki)
+### Java 版本
+
+FlowTest 目标 Java 8。EasyRandom 4.3.0 和 Instancio 3.7.1 是支持 Java 8 的最后版本，已锁定不升级。
+
+---
+
+## 模块结构
+
+```
+flowtest
+├── flowtest-core                    核心框架（fixture、persistence、snapshot、assertion、routing）
+├── flowtest-assertj-db              AssertJ-DB 集成
+├── flowtest-junit5                  JUnit 5 扩展（@FlowTest 注解 + FlowTestExtension）
+├── flowtest-testng                  TestNG 监听器（@FlowTest 注解 + FlowTestListener）
+├── flowtest-mockito                 Mockito 集成（MockTestFlow、MockTrait）
+└── flowtest-spring-boot-starter     Spring Boot 自动配置（推荐引入此模块）
+```
+
+## 构建与测试
+
+```bash
+# 构建全部模块
+mvn clean install
+
+# 跳过测试
+mvn clean install -DskipTests
+
+# 运行指定模块的测试
+mvn test -pl flowtest-core
+
+# 运行指定测试类
+mvn test -pl flowtest-core -Dtest=DataSourceRoutingIntegrationTest
+
+# 运行指定测试方法
+mvn test -pl flowtest-core -Dtest=DataSourceRouteTest#wildcardMatchHandlesEdgeCases
+```
+
+## License
+
+[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
