@@ -265,6 +265,130 @@ flowtest:
   string-length-max: 20
 ```
 
+#### 为什么推荐 Instancio
+
+Instancio 不仅仅是"另一个随机数据生成器"，它原生理解 JPA / Bean Validation 注解，能直接生成**符合数据库约束**的测试数据，大幅减少手工配置。
+
+**1. JPA 注解感知 —— 自动匹配数据库约束**
+
+开启 `JPA_ENABLED`（FlowTest 默认已开启）后，Instancio 会读取 `@Column` 注解并自动约束生成值：
+
+```java
+@Column(length = 50)
+private String username;       // 自动生成长度 ≤ 50 的字符串
+
+@Column(precision = 10, scale = 2)
+private BigDecimal balance;    // 自动生成精度匹配的 BigDecimal
+
+@Id @GeneratedValue
+private Long id;               // 自动置为 null，交给数据库生成
+```
+
+这意味着即使不写任何 Trait，`flow.arrange().add(User.class).persist()` 生成的数据也不会因为字段超长而导致 SQL 异常。
+
+**2. Bean Validation 支持 —— 生成业务合法数据**
+
+当 classpath 中有 Hibernate Validator 时，Instancio 自动识别校验注解：
+
+```java
+@NotNull
+private String email;          // 不会生成 null
+
+@Size(min = 2, max = 20)
+private String nickname;       // 长度在 2~20 之间
+
+@Min(0) @Max(9999)
+private Integer score;         // 值在 0~9999 之间
+
+@Pattern(regexp = "^1[3-9]\\d{9}$")
+private String phone;          // 生成匹配正则的字符串
+```
+
+配合 JPA 注解，Instancio 提供**双层约束保障**：JPA 约束匹配数据库 schema，Bean Validation 匹配业务规则。
+
+**3. Instancio API 直接使用 —— 在 Trait 中精细控制**
+
+FlowTest 的 Trait 系统与 Instancio API 天然互补。Trait 负责"覆盖你关心的字段"，Instancio 负责"填充剩下的一切"。当你需要更精细的控制时，可以直接在测试中使用 Instancio API：
+
+```java
+import static org.instancio.Select.field;
+
+// 使用 Instancio 的 generate API 生成符合业务规则的值
+User user = Instancio.of(User.class)
+    .set(field("username"), "alice")
+    .generate(field("age"), gen -> gen.ints().range(18, 65))
+    .generate(field("level"), gen -> gen.enumOf(UserLevel.class).excluding(UserLevel.BANNED))
+    .supply(field("orderNo"), () -> "ORD-" + UUID.randomUUID().toString().substring(0, 8))
+    .ignore(field("deletedAt"))
+    .create();
+```
+
+| 方法 | 用途 | 示例 |
+|------|------|------|
+| `set()` | 固定值 | `set(field("status"), "ACTIVE")` |
+| `generate()` | 用内置生成器约束范围 | `generate(field("age"), gen -> gen.ints().range(18, 65))` |
+| `supply()` | 用 Supplier 动态生成 | `supply(field("code"), () -> "P-" + seq.next())` |
+| `ignore()` | 不生成该字段（保持 null） | `ignore(field("deletedAt"))` |
+| `onComplete()` | 生成后回调 | `onComplete(all(Order.class), o -> o.setTotal(o.getPrice() * o.getQty()))` |
+
+**4. Model 模板 —— 可复用的对象蓝图**
+
+当多个测试需要"同一种实体的不同变体"时，`Model<T>` 比 Trait 更底层，适合定义**跨测试类共享的实体模板**：
+
+```java
+// 定义模板：一个有效的 VIP 用户
+Model<User> vipTemplate = Instancio.of(User.class)
+    .set(field("level"), UserLevel.VIP)
+    .generate(field("balance"), gen -> gen.doubles().range(1000.0, 50000.0))
+    .generate(field("username"), gen -> gen.string().prefix("vip_").length(8))
+    .toModel();
+
+// 测试 A：基于模板创建
+User alice = Instancio.of(vipTemplate)
+    .set(field("username"), "alice")
+    .create();
+
+// 测试 B：基于同一模板，覆盖不同字段
+User bob = Instancio.of(vipTemplate)
+    .set(field("username"), "bob")
+    .set(field("balance"), 999.0)
+    .create();
+```
+
+也可以在 Trait 中封装 Model：
+
+```java
+public class UserTraits {
+    private static final Model<User> VIP_MODEL = Instancio.of(User.class)
+        .set(field("level"), UserLevel.VIP)
+        .generate(field("balance"), gen -> gen.doubles().range(1000.0, 50000.0))
+        .toModel();
+
+    public static Trait<User> vipWithBalance(double balance) {
+        return u -> {
+            User template = Instancio.of(VIP_MODEL).create();
+            u.setLevel(template.getLevel());
+            u.setBalance(BigDecimal.valueOf(balance));
+        };
+    }
+}
+```
+
+**5. 批量生成 —— 一行代码创建集合**
+
+```java
+// 生成 10 个用户，年龄在 18~65 之间
+List<User> users = Instancio.ofList(User.class)
+    .size(10)
+    .generate(field("age"), gen -> gen.ints().range(18, 65))
+    .create();
+
+// 配合 FlowTest 的 addMany
+flow.arrange()
+    .addMany(Product.class, 20, (p, i) -> p.setPrice(BigDecimal.valueOf(10 * (i + 1))))
+    .persist();
+```
+
 ### 实体元数据解析
 
 FlowTest 通过反射自动解析实体类的表名、列名、ID 字段。**无需编译期依赖 JPA**——框架在运行时通过反射读取注解。
