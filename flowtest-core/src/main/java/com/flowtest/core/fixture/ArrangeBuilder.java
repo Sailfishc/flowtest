@@ -161,15 +161,24 @@ public class ArrangeBuilder {
      * @return the ActPhase for continuing the test flow
      */
     public ActPhase persist() {
-        // Record cleanup snapshot baseline before persisting
-        recordCleanupSnapshot();
-
+        // First pass: build all entities to extract sharding keys before taking snapshot
+        List<Object> builtEntities = new ArrayList<>();
         for (EntitySpec<?> spec : entitySpecs) {
-            Object entity = buildAndPersist(spec);
-            context.addEntity(spec.getAlias(), spec.getEntityClass(), entity);
+            Object entity = buildEntity(spec);
+            builtEntities.add(entity);
 
-            // Track table for snapshot and register entity metadata for primary key detection
+            // Extract and record sharding key from the entity
             EntityMetadata metadata = new EntityMetadata(spec.getEntityClass());
+            if (metadata.hasShardingKey()) {
+                Object shardingKeyValue = metadata.getShardingKeyValue(entity);
+                context.recordShardingKey(
+                    metadata.getTableName(),
+                    metadata.getShardingKeyColumnName(),
+                    shardingKeyValue
+                );
+            }
+
+            // Track table for snapshot
             context.addWatchedTable(metadata.getTableName());
 
             // Register entity metadata to SnapshotEngine so it knows the correct primary key column
@@ -177,6 +186,22 @@ public class ArrangeBuilder {
                 snapshotEngine.withEntityMetadata(spec.getEntityClass());
             }
         }
+
+        // Record cleanup snapshot baseline AFTER extracting sharding keys but BEFORE persisting
+        // This ensures snapshot queries can use sharding key conditions
+        recordCleanupSnapshot();
+
+        // Second pass: persist all entities
+        for (int i = 0; i < entitySpecs.size(); i++) {
+            EntitySpec<?> spec = entitySpecs.get(i);
+            Object entity = builtEntities.get(i);
+
+            // Persist and record ID
+            Object id = persister.persist(entity);
+            context.recordPersistedId(spec.getEntityClass(), id);
+            context.addEntity(spec.getAlias(), spec.getEntityClass(), entity);
+        }
+
         return new ActPhase(context, persister, snapshotEngine);
     }
 
@@ -218,6 +243,7 @@ public class ArrangeBuilder {
      * Records cleanup snapshot baseline for all tables.
      * This is called before persist() to enable cleanup of act-produced data.
      * Uses full row-data snapshots for primary-key-type-agnostic cleanup.
+     * When sharding keys are present, snapshot queries will be filtered by sharding key.
      */
     private void recordCleanupSnapshot() {
         if (snapshotEngine == null) {
@@ -229,7 +255,11 @@ public class ArrangeBuilder {
 
         java.util.Set<String> tables = snapshotEngine.listTableNames();
         java.util.Map<String, com.flowtest.core.snapshot.TableSnapshot> beforeSnapshots =
-            snapshotEngine.takeBeforeSnapshot(tables);
+            snapshotEngine.takeBeforeSnapshot(
+                tables,
+                context.getShardingKeyColumns(),
+                context.getShardingKeyValues()
+            );
         context.setCleanupBeforeSnapshot(beforeSnapshots);
     }
 }

@@ -51,6 +51,12 @@ public class TestContext {
     /** Mock context (optional, used when flowtest-mockito is on classpath) */
     private Object mockContext;
 
+    /** Sharding key values by table name: table -> sharding key value */
+    private final Map<String, Object> shardingKeyValues = new LinkedHashMap<>();
+
+    /** Sharding key column names by table name: table -> column name */
+    private final Map<String, String> shardingKeyColumns = new LinkedHashMap<>();
+
     /**
      * Gets the first entity of the given type.
      *
@@ -232,6 +238,69 @@ public class TestContext {
     }
 
     /**
+     * Records a sharding key value for a table.
+     *
+     * @param tableName the table name
+     * @param columnName the sharding key column name
+     * @param value the sharding key value
+     */
+    public void recordShardingKey(String tableName, String columnName, Object value) {
+        if (value != null) {
+            String tableKey = tableName.toLowerCase();
+            shardingKeyValues.put(tableKey, value);
+            shardingKeyColumns.put(tableKey, columnName);
+        }
+    }
+
+    /**
+     * Gets the sharding key value for a table.
+     *
+     * @param tableName the table name
+     * @return the sharding key value, or null if not set
+     */
+    public Object getShardingKeyValue(String tableName) {
+        return shardingKeyValues.get(tableName.toLowerCase());
+    }
+
+    /**
+     * Gets the sharding key column name for a table.
+     *
+     * @param tableName the table name
+     * @return the sharding key column name, or null if not set
+     */
+    public String getShardingKeyColumn(String tableName) {
+        return shardingKeyColumns.get(tableName.toLowerCase());
+    }
+
+    /**
+     * Returns all sharding key values by table name.
+     *
+     * @return unmodifiable map of table name to sharding key value
+     */
+    public Map<String, Object> getShardingKeyValues() {
+        return Collections.unmodifiableMap(shardingKeyValues);
+    }
+
+    /**
+     * Returns all sharding key column names by table name.
+     *
+     * @return unmodifiable map of table name to sharding key column name
+     */
+    public Map<String, String> getShardingKeyColumns() {
+        return Collections.unmodifiableMap(shardingKeyColumns);
+    }
+
+    /**
+     * Checks if a table has a sharding key configured.
+     *
+     * @param tableName the table name
+     * @return true if sharding key is configured for this table
+     */
+    public boolean hasShardingKey(String tableName) {
+        return shardingKeyValues.containsKey(tableName.toLowerCase());
+    }
+
+    /**
      * Clears all state in this context.
      */
     public void clear() {
@@ -247,5 +316,7 @@ public class TestContext {
         cleanupBeforeSnapshot = null;
         cleanupSnapshot.clear();
         mockContext = null;
+        shardingKeyValues.clear();
+        shardingKeyColumns.clear();
     }
 }

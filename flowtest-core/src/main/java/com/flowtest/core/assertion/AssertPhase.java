@@ -69,7 +69,11 @@ public class AssertPhase<T> {
                 }
             }
             if (!context.getWatchedTables().isEmpty()) {
-                Map<String, TableSnapshot> beforeSnapshot = snapshotEngine.takeBeforeSnapshot(context.getWatchedTables());
+                Map<String, TableSnapshot> beforeSnapshot = snapshotEngine.takeBeforeSnapshot(
+                    context.getWatchedTables(),
+                    context.getShardingKeyColumns(),
+                    context.getShardingKeyValues()
+                );
                 context.setBeforeSnapshot(beforeSnapshot);
             }
         }
@@ -98,7 +102,11 @@ public class AssertPhase<T> {
             return;
         }
 
-        Map<String, TableSnapshot> afterSnapshot = snapshotEngine.takeAfterSnapshot(context.getWatchedTables());
+        Map<String, TableSnapshot> afterSnapshot = snapshotEngine.takeAfterSnapshot(
+            context.getWatchedTables(),
+            context.getShardingKeyColumns(),
+            context.getShardingKeyValues()
+        );
         context.setAfterSnapshot(afterSnapshot);
 
         SnapshotDiff diff = snapshotEngine.computeDiff(context.getBeforeSnapshot(), afterSnapshot);

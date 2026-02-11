@@ -1,5 +1,6 @@
 package com.flowtest.core.fixture;
 
+import com.flowtest.core.annotation.ShardingKey;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,6 +23,8 @@ public class EntityMetadata {
     private final Field idField;
     private final String idColumnName;
     private final IdStrategy idStrategy;
+    private final Field shardingKeyField;
+    private final String shardingKeyColumnName;
     private final Map<String, Field> columnToField;
     private final Map<Field, String> fieldToColumn;
 
@@ -31,6 +34,8 @@ public class EntityMetadata {
         this.idField = resolveIdField(entityClass);
         this.idColumnName = idField != null ? resolveColumnName(idField) : "id";
         this.idStrategy = idField != null ? resolveIdStrategy(idField) : IdStrategy.AUTO;
+        this.shardingKeyField = resolveShardingKeyField(entityClass);
+        this.shardingKeyColumnName = shardingKeyField != null ? resolveShardingKeyColumnName(shardingKeyField) : null;
 
         Map<String, Field> colToField = new LinkedHashMap<>();
         Map<Field, String> fieldToCol = new LinkedHashMap<>();
@@ -114,6 +119,32 @@ public class EntityMetadata {
 
         log.warn("No ID field found for entity class {}", clazz.getName());
         return null;
+    }
+
+    /**
+     * Resolves the sharding key field for the entity.
+     * Looks for @ShardingKey annotation.
+     */
+    private Field resolveShardingKeyField(Class<?> clazz) {
+        for (Field field : getAllFields(clazz)) {
+            if (field.isAnnotationPresent(ShardingKey.class)) {
+                field.setAccessible(true);
+                return field;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Resolves the column name for the sharding key field.
+     * Priority: @ShardingKey(column) > @Column(name) > @TableField(value) > camelCase to snake_case
+     */
+    private String resolveShardingKeyColumnName(Field field) {
+        ShardingKey shardingKey = field.getAnnotation(ShardingKey.class);
+        if (shardingKey != null && !shardingKey.column().isEmpty()) {
+            return shardingKey.column();
+        }
+        return resolveColumnName(field);
     }
 
     /**
@@ -308,6 +339,50 @@ public class EntityMetadata {
 
     public String getIdColumnName() {
         return idColumnName;
+    }
+
+    /**
+     * Gets the sharding key field for this entity.
+     *
+     * @return the sharding key field, or null if not defined
+     */
+    public Field getShardingKeyField() {
+        return shardingKeyField;
+    }
+
+    /**
+     * Gets the sharding key column name for this entity.
+     *
+     * @return the sharding key column name, or null if not defined
+     */
+    public String getShardingKeyColumnName() {
+        return shardingKeyColumnName;
+    }
+
+    /**
+     * Returns true if this entity has a sharding key defined.
+     *
+     * @return true if sharding key is present
+     */
+    public boolean hasShardingKey() {
+        return shardingKeyField != null;
+    }
+
+    /**
+     * Gets the sharding key value from an entity instance.
+     *
+     * @param entity the entity instance
+     * @return the sharding key value, or null if not defined or null value
+     */
+    public Object getShardingKeyValue(Object entity) {
+        if (shardingKeyField == null) {
+            return null;
+        }
+        try {
+            return shardingKeyField.get(entity);
+        } catch (IllegalAccessException e) {
+            throw new RuntimeException("Failed to get sharding key from entity", e);
+        }
     }
 
     /**

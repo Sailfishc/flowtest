@@ -72,7 +72,13 @@
       "Bash(git init:*)",
       "Bash(git config:*)",
       "Bash(curl:*)",
-      "Bash(git tag:*)"
+      "Bash(git tag:*)",
+      "WebFetch(domain:www.instancio.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(jar tf:*)",
+      "Bash(mvn dependency:sources:*)",
+      "Bash(mvn dependency:resolve:*)"
     ]
   }
 }

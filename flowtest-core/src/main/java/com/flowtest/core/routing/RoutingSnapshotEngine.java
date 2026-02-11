@@ -37,6 +37,14 @@ public class RoutingSnapshotEngine extends SnapshotEngine {
 
     @Override
     public Map<String, TableSnapshot> takeBeforeSnapshot(Set<String> tables) {
+        return takeBeforeSnapshot(tables, java.util.Collections.<String, String>emptyMap(),
+            java.util.Collections.<String, Object>emptyMap());
+    }
+
+    @Override
+    public Map<String, TableSnapshot> takeBeforeSnapshot(Set<String> tables,
+                                                          Map<String, String> shardingKeyColumns,
+                                                          Map<String, Object> shardingKeyValues) {
         Map<String, TableSnapshot> merged = new LinkedHashMap<String, TableSnapshot>();
         Map<String, Set<String>> grouped = groupTablesByDataSource(tables);
 
@@ -45,7 +53,7 @@ public class RoutingSnapshotEngine extends SnapshotEngine {
             if (engine == null) {
                 engine = router.getDefaultSnapshotEngine();
             }
-            merged.putAll(engine.takeBeforeSnapshot(entry.getValue()));
+            merged.putAll(engine.takeBeforeSnapshot(entry.getValue(), shardingKeyColumns, shardingKeyValues));
         }
 
         return merged;
@@ -53,6 +61,14 @@ public class RoutingSnapshotEngine extends SnapshotEngine {
 
     @Override
     public Map<String, TableSnapshot> takeAfterSnapshot(Set<String> tables) {
+        return takeAfterSnapshot(tables, java.util.Collections.<String, String>emptyMap(),
+            java.util.Collections.<String, Object>emptyMap());
+    }
+
+    @Override
+    public Map<String, TableSnapshot> takeAfterSnapshot(Set<String> tables,
+                                                         Map<String, String> shardingKeyColumns,
+                                                         Map<String, Object> shardingKeyValues) {
         Map<String, TableSnapshot> merged = new LinkedHashMap<String, TableSnapshot>();
         Map<String, Set<String>> grouped = groupTablesByDataSource(tables);
 
@@ -61,7 +77,7 @@ public class RoutingSnapshotEngine extends SnapshotEngine {
             if (engine == null) {
                 engine = router.getDefaultSnapshotEngine();
             }
-            merged.putAll(engine.takeAfterSnapshot(entry.getValue()));
+            merged.putAll(engine.takeAfterSnapshot(entry.getValue(), shardingKeyColumns, shardingKeyValues));
         }
 
         return merged;

@@ -272,24 +272,42 @@ public class SnapshotEngine {
      * @return map of table name to snapshot
      */
     public Map<String, TableSnapshot> takeBeforeSnapshot(Set<String> tables) {
+        return takeBeforeSnapshot(tables, Collections.<String, String>emptyMap(), Collections.<String, Object>emptyMap());
+    }
+
+    /**
+     * Takes a "before" snapshot of the given tables with sharding key filters.
+     *
+     * @param tables the table names to snapshot
+     * @param shardingKeyColumns map of table name to sharding key column name
+     * @param shardingKeyValues map of table name to sharding key value
+     * @return map of table name to snapshot
+     */
+    public Map<String, TableSnapshot> takeBeforeSnapshot(Set<String> tables,
+                                                          Map<String, String> shardingKeyColumns,
+                                                          Map<String, Object> shardingKeyValues) {
         Map<String, TableSnapshot> snapshots = new LinkedHashMap<>();
 
         for (String table : tables) {
+            String tableKey = table.toLowerCase();
             String idColumn = getIdColumnForTable(table);
+            String shardingColumn = shardingKeyColumns.get(tableKey);
+            Object shardingValue = shardingKeyValues.get(tableKey);
+            
             TableSnapshot snapshot = new TableSnapshot(table);
-            snapshot.setMaxId(getMaxId(table, idColumn));
-            snapshot.setRowCount(getRowCount(table));
+            snapshot.setMaxId(getMaxId(table, idColumn, shardingColumn, shardingValue));
+            snapshot.setRowCount(getRowCount(table, shardingColumn, shardingValue));
 
             // Capture full row data if enabled
             if (captureFullRows) {
-                Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table, idColumn);
+                Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table, idColumn, shardingColumn, shardingValue);
                 snapshot.setRowsByPrimaryKey(rowData);
             }
 
             snapshots.put(table, snapshot);
-            log.debug("Before snapshot for {}: maxId={}, rowCount={}, rowDataSize={}, idColumn={}",
+            log.debug("Before snapshot for {}: maxId={}, rowCount={}, rowDataSize={}, idColumn={}, shardingKey={}:{}",
                 table, snapshot.getMaxId(), snapshot.getRowCount(),
-                snapshot.getRowsByPrimaryKey().size(), idColumn);
+                snapshot.getRowsByPrimaryKey().size(), idColumn, shardingColumn, shardingValue);
         }
 
         return snapshots;
@@ -302,24 +320,42 @@ public class SnapshotEngine {
      * @return map of table name to snapshot
      */
     public Map<String, TableSnapshot> takeAfterSnapshot(Set<String> tables) {
+        return takeAfterSnapshot(tables, Collections.<String, String>emptyMap(), Collections.<String, Object>emptyMap());
+    }
+
+    /**
+     * Takes an "after" snapshot of the given tables with sharding key filters.
+     *
+     * @param tables the table names to snapshot
+     * @param shardingKeyColumns map of table name to sharding key column name
+     * @param shardingKeyValues map of table name to sharding key value
+     * @return map of table name to snapshot
+     */
+    public Map<String, TableSnapshot> takeAfterSnapshot(Set<String> tables,
+                                                         Map<String, String> shardingKeyColumns,
+                                                         Map<String, Object> shardingKeyValues) {
         Map<String, TableSnapshot> snapshots = new LinkedHashMap<>();
 
         for (String table : tables) {
+            String tableKey = table.toLowerCase();
             String idColumn = getIdColumnForTable(table);
+            String shardingColumn = shardingKeyColumns.get(tableKey);
+            Object shardingValue = shardingKeyValues.get(tableKey);
+            
             TableSnapshot snapshot = new TableSnapshot(table);
-            snapshot.setMaxId(getMaxId(table, idColumn));
-            snapshot.setRowCount(getRowCount(table));
+            snapshot.setMaxId(getMaxId(table, idColumn, shardingColumn, shardingValue));
+            snapshot.setRowCount(getRowCount(table, shardingColumn, shardingValue));
 
             // Capture full row data if enabled
             if (captureFullRows) {
-                Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table, idColumn);
+                Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table, idColumn, shardingColumn, shardingValue);
                 snapshot.setRowsByPrimaryKey(rowData);
             }
 
             snapshots.put(table, snapshot);
-            log.debug("After snapshot for {}: maxId={}, rowCount={}, rowDataSize={}, idColumn={}",
+            log.debug("After snapshot for {}: maxId={}, rowCount={}, rowDataSize={}, idColumn={}, shardingKey={}:{}",
                 table, snapshot.getMaxId(), snapshot.getRowCount(),
-                snapshot.getRowsByPrimaryKey().size(), idColumn);
+                snapshot.getRowsByPrimaryKey().size(), idColumn, shardingColumn, shardingValue);
         }
 
         return snapshots;
@@ -409,9 +445,20 @@ public class SnapshotEngine {
      * Gets the MAX(ID) for a table.
      */
     private Long getMaxId(String table, String idColumn) {
+        return getMaxId(table, idColumn, null, null);
+    }
+
+    /**
+     * Gets the MAX(ID) for a table with optional sharding key filter.
+     */
+    private Long getMaxId(String table, String idColumn, String shardingColumn, Object shardingValue) {
         try {
-            String sql = "SELECT MAX(" + idColumn + ") FROM " + table;
-            return jdbcTemplate.queryForObject(sql, Long.class);
+            StringBuilder sql = new StringBuilder("SELECT MAX(").append(idColumn).append(") FROM ").append(table);
+            if (shardingColumn != null && shardingValue != null) {
+                sql.append(" WHERE ").append(shardingColumn).append(" = ?");
+                return jdbcTemplate.queryForObject(sql.toString(), Long.class, shardingValue);
+            }
+            return jdbcTemplate.queryForObject(sql.toString(), Long.class);
         } catch (Exception e) {
             log.warn("Failed to get max ID for table {} (column {}): {}", table, idColumn, e.getMessage());
             return 0L;
@@ -422,9 +469,20 @@ public class SnapshotEngine {
      * Gets the row count for a table.
      */
     private Long getRowCount(String table) {
+        return getRowCount(table, null, null);
+    }
+
+    /**
+     * Gets the row count for a table with optional sharding key filter.
+     */
+    private Long getRowCount(String table, String shardingColumn, Object shardingValue) {
         try {
-            String sql = "SELECT COUNT(*) FROM " + table;
-            return jdbcTemplate.queryForObject(sql, Long.class);
+            StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM ").append(table);
+            if (shardingColumn != null && shardingValue != null) {
+                sql.append(" WHERE ").append(shardingColumn).append(" = ?");
+                return jdbcTemplate.queryForObject(sql.toString(), Long.class, shardingValue);
+            }
+            return jdbcTemplate.queryForObject(sql.toString(), Long.class);
         } catch (Exception e) {
             log.warn("Failed to get row count for table {}: {}", table, e.getMessage());
             return 0L;
@@ -467,11 +525,28 @@ public class SnapshotEngine {
      * Fetches all rows indexed by primary key.
      */
     private Map<Object, Map<String, Object>> fetchAllRowsIndexedByPK(String table, String idColumn) {
+        return fetchAllRowsIndexedByPK(table, idColumn, null, null);
+    }
+
+    /**
+     * Fetches all rows indexed by primary key with optional sharding key filter.
+     */
+    private Map<Object, Map<String, Object>> fetchAllRowsIndexedByPK(String table, String idColumn,
+                                                                      String shardingColumn, Object shardingValue) {
         Map<Object, Map<String, Object>> result = new LinkedHashMap<>();
 
         try {
-            String sql = "SELECT * FROM " + table + " ORDER BY " + idColumn;
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(sql);
+            StringBuilder sql = new StringBuilder("SELECT * FROM ").append(table);
+            List<Map<String, Object>> rows;
+            
+            if (shardingColumn != null && shardingValue != null) {
+                sql.append(" WHERE ").append(shardingColumn).append(" = ?");
+                sql.append(" ORDER BY ").append(idColumn);
+                rows = jdbcTemplate.queryForList(sql.toString(), shardingValue);
+            } else {
+                sql.append(" ORDER BY ").append(idColumn);
+                rows = jdbcTemplate.queryForList(sql.toString());
+            }
 
             int limit = Math.min(rows.size(), maxRowsToCapture);
             for (int i = 0; i < limit; i++) {
