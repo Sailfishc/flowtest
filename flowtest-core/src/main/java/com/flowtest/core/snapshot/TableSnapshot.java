@@ -6,12 +6,11 @@ import java.util.Map;
 
 /**
  * Snapshot of a single table's state at a point in time.
- * Captures MAX(ID), row count, and optionally full row data for change detection.
+ * Captures row count and full row data indexed by primary key for change detection.
  */
 public class TableSnapshot {
 
     private final String tableName;
-    private Long maxId;
     private Long rowCount;
 
     /** Full row data indexed by primary key value */
@@ -23,14 +22,6 @@ public class TableSnapshot {
 
     public String getTableName() {
         return tableName;
-    }
-
-    public Long getMaxId() {
-        return maxId;
-    }
-
-    public void setMaxId(Long maxId) {
-        this.maxId = maxId;
     }
 
     public Long getRowCount() {
@@ -60,8 +51,8 @@ public class TableSnapshot {
     public String toString() {
         return "TableSnapshot{" +
             "tableName='" + tableName + '\'' +
-            ", maxId=" + maxId +
             ", rowCount=" + rowCount +
+            ", rowDataSize=" + rowsByPrimaryKey.size() +
             '}';
     }
 }

@@ -295,18 +295,17 @@ public class SnapshotEngine {
             Object shardingValue = shardingKeyValues.get(tableKey);
             
             TableSnapshot snapshot = new TableSnapshot(table);
-            snapshot.setMaxId(getMaxId(table, idColumn, shardingColumn, shardingValue));
             snapshot.setRowCount(getRowCount(table, shardingColumn, shardingValue));
 
-            // Capture full row data if enabled
+            // Capture full row data indexed by primary key
             if (captureFullRows) {
                 Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table, idColumn, shardingColumn, shardingValue);
                 snapshot.setRowsByPrimaryKey(rowData);
             }
 
             snapshots.put(table, snapshot);
-            log.debug("Before snapshot for {}: maxId={}, rowCount={}, rowDataSize={}, idColumn={}, shardingKey={}:{}",
-                table, snapshot.getMaxId(), snapshot.getRowCount(),
+            log.debug("Before snapshot for {}: rowCount={}, rowDataSize={}, idColumn={}, shardingKey={}:{}",
+                table, snapshot.getRowCount(),
                 snapshot.getRowsByPrimaryKey().size(), idColumn, shardingColumn, shardingValue);
         }
 
@@ -343,18 +342,17 @@ public class SnapshotEngine {
             Object shardingValue = shardingKeyValues.get(tableKey);
             
             TableSnapshot snapshot = new TableSnapshot(table);
-            snapshot.setMaxId(getMaxId(table, idColumn, shardingColumn, shardingValue));
             snapshot.setRowCount(getRowCount(table, shardingColumn, shardingValue));
 
-            // Capture full row data if enabled
+            // Capture full row data indexed by primary key
             if (captureFullRows) {
                 Map<Object, Map<String, Object>> rowData = fetchAllRowsIndexedByPK(table, idColumn, shardingColumn, shardingValue);
                 snapshot.setRowsByPrimaryKey(rowData);
             }
 
             snapshots.put(table, snapshot);
-            log.debug("After snapshot for {}: maxId={}, rowCount={}, rowDataSize={}, idColumn={}, shardingKey={}:{}",
-                table, snapshot.getMaxId(), snapshot.getRowCount(),
+            log.debug("After snapshot for {}: rowCount={}, rowDataSize={}, idColumn={}, shardingKey={}:{}",
+                table, snapshot.getRowCount(),
                 snapshot.getRowsByPrimaryKey().size(), idColumn, shardingColumn, shardingValue);
         }
 
@@ -380,51 +378,22 @@ public class SnapshotEngine {
             TableSnapshot beforeSnap = before.get(table);
             TableSnapshot afterSnap = after.get(table);
 
-            long beforeMaxId = beforeSnap != null && beforeSnap.getMaxId() != null ? beforeSnap.getMaxId() : 0;
-            long afterMaxId = afterSnap != null && afterSnap.getMaxId() != null ? afterSnap.getMaxId() : 0;
             long beforeCount = beforeSnap != null && beforeSnap.getRowCount() != null ? beforeSnap.getRowCount() : 0;
             long afterCount = afterSnap != null && afterSnap.getRowCount() != null ? afterSnap.getRowCount() : 0;
 
-            // Calculate new rows based on row count difference (handles AUTO_INCREMENT gaps after rollbacks)
-            // If afterCount > beforeCount, new rows were inserted
-            // Also check MAX(ID) to handle mixed insert/delete scenarios
-            long countBasedNewRows = Math.max(0, afterCount - beforeCount);
-            long idBasedNewRows = Math.max(0, afterMaxId - beforeMaxId);
-
-            // Use the smaller value to avoid false positives from AUTO_INCREMENT gaps
-            // But if full row data is available (or captureFullRows is enabled), use count-based calculation
-            long newRows;
-            // When captureFullRows is enabled, always use count-based calculation
-            // because MAX(ID) doesn't work for string primary keys
-            if (captureFullRows) {
-                newRows = countBasedNewRows;
-            } else if (beforeSnap != null && afterSnap != null && beforeSnap.hasRowData() && afterSnap.hasRowData()) {
-                // With full row data, count-based is more accurate
-                newRows = countBasedNewRows;
-            } else {
-                // Without full row data, use the smaller of count vs ID difference
-                newRows = Math.min(countBasedNewRows, idBasedNewRows);
-            }
+            // Calculate new rows based on row count difference
+            long newRows = Math.max(0, afterCount - beforeCount);
             diff.setNewRowCount(table, newRows);
 
             // Calculate deleted rows based on count difference
             long deletedRows = Math.max(0, beforeCount - afterCount + newRows);
             diff.setDeletedRowCount(table, deletedRows);
 
-            // Fetch actual new row data if there are new rows
-            if (newRows > 0) {
-                List<Map<String, Object>> newRowsData;
-                // When full row data is available, compute new rows from row data comparison
-                // This handles string primary keys correctly (where MAX() doesn't work)
-                if (afterSnap != null && afterSnap.hasRowData()) {
-                    // After snapshot has row data - compute new rows by comparing with before
-                    // This works even if before snapshot is empty (new table scenario)
-                    newRowsData = computeNewRowsFromRowData(
-                        beforeSnap != null ? beforeSnap : new TableSnapshot(table),
-                        afterSnap);
-                } else {
-                    newRowsData = fetchNewRows(table, idColumn, beforeMaxId, afterMaxId);
-                }
+            // Compute new rows data from row data comparison (works with any PK type)
+            if (newRows > 0 && afterSnap != null && afterSnap.hasRowData()) {
+                List<Map<String, Object>> newRowsData = computeNewRowsFromRowData(
+                    beforeSnap != null ? beforeSnap : new TableSnapshot(table),
+                    afterSnap);
                 diff.setNewRowsData(table, newRowsData);
             }
 
@@ -439,30 +408,6 @@ public class SnapshotEngine {
         }
 
         return diff;
-    }
-
-    /**
-     * Gets the MAX(ID) for a table.
-     */
-    private Long getMaxId(String table, String idColumn) {
-        return getMaxId(table, idColumn, null, null);
-    }
-
-    /**
-     * Gets the MAX(ID) for a table with optional sharding key filter.
-     */
-    private Long getMaxId(String table, String idColumn, String shardingColumn, Object shardingValue) {
-        try {
-            StringBuilder sql = new StringBuilder("SELECT MAX(").append(idColumn).append(") FROM ").append(table);
-            if (shardingColumn != null && shardingValue != null) {
-                sql.append(" WHERE ").append(shardingColumn).append(" = ?");
-                return jdbcTemplate.queryForObject(sql.toString(), Long.class, shardingValue);
-            }
-            return jdbcTemplate.queryForObject(sql.toString(), Long.class);
-        } catch (Exception e) {
-            log.warn("Failed to get max ID for table {} (column {}): {}", table, idColumn, e.getMessage());
-            return 0L;
-        }
     }
 
     /**
@@ -486,21 +431,6 @@ public class SnapshotEngine {
         } catch (Exception e) {
             log.warn("Failed to get row count for table {}: {}", table, e.getMessage());
             return 0L;
-        }
-    }
-
-    /**
-     * Fetches new rows between the before and after max IDs.
-     */
-    private List<Map<String, Object>> fetchNewRows(String table, String idColumn, long beforeMaxId, long afterMaxId) {
-        try {
-            String sql = "SELECT * FROM " + table +
-                " WHERE " + idColumn + " > ? AND " + idColumn + " <= ?" +
-                " ORDER BY " + idColumn;
-            return jdbcTemplate.queryForList(sql, beforeMaxId, afterMaxId);
-        } catch (Exception e) {
-            log.warn("Failed to fetch new rows for table {}: ", table, e.getMessage());
-            return Collections.emptyList();
         }
     }
 
