@@ -16,6 +16,9 @@
 - Spring Boot starter auto-configures JDBC registries, executors, and `ScenarioExecutor`.
 - Spring Boot starter now auto-generates fixture adapters for registered entities and supports property-level override/ignore metadata.
 - Manual `JdbcFixtureExecutor` wiring now also accepts `JdbcObservationRegistry` directly and auto-generates fixture adapters from it.
+- Spring Boot starter now supports multi-datasource routing through `flowtest.v2.datasource.default-name` and `flowtest.v2.datasource.bindings[*]`.
+- JDBC observation and fixture execution can now route by table name across multiple `DataSource` beans using exact bindings or glob patterns.
+- TestNG module now contains a second complete example for Spring Boot + TestNG + multi-datasource routing.
 - H2-backed case module proves act-only, mixed fixture/watch-only, and watch-only restore flows.
 - Docs now include a dedicated `flowtest-v2` integrations guide and point to the Spring Boot + TestNG example file.
 
@@ -32,4 +35,5 @@
 ## Known Constraints
 - Simple JDBC fixtures can now use convention-based adapter generation, but special persistence behavior still requires a custom adapter.
 - Sharded observation requires route scope before action execution.
+- Multi-datasource routing currently binds by table name and glob pattern; entity-name bindings are not implemented.
 - `RESTORE_BEFORE_IMAGE` assumes rows are fully writable from snapshot columns and does not yet handle database-generated or non-updatable columns specially.

@@ -20,6 +20,10 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Added low-level `JdbcFixtureExecutor(DataSource, JdbcObservationRegistry)` support so manual wiring also gets auto-generated fixture adapters.
 - Added row-level change assertions (`insertedRow`, `deletedRow`, `modifiedRow`, and `change(...)`) plus helper DSL classes.
 - Added a `flowtest-v2` integration guide covering JUnit 5, TestNG, Spring Boot, row-level assertions, and the copyable Spring Boot + TestNG example.
+- Added `FlowTestDataSourceRegistry` with exact-table and glob-pattern datasource bindings.
+- Added `MultiDataSourceJdbcObservationExecutor` plus multi-datasource routing in `JdbcFixtureExecutor`.
+- Added Spring Boot property binding for `flowtest.v2.datasource.default-name` and `flowtest.v2.datasource.bindings[*]`.
+- Added Spring Boot starter and TestNG examples for multi-datasource scenarios driven by configuration properties.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
@@ -28,8 +32,11 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Registered entity metadata is now the default source for both observation and simple JDBC fixture persistence.
 - The same registered entity metadata now works across Spring Boot auto-config, JUnit5 builder wiring, and low-level manual JDBC wiring.
 - `RESTORE_BEFORE_IMAGE` cleanup runs route-aware SQL and is now the recommended policy for watch-only scenarios that mutate existing rows.
+- Datasource selection is now an infrastructure concern, configured once by table name/pattern, not a per-scenario DSL concern.
+- Route scope and datasource routing stay separate: datasource is resolved by table binding first, then route conditions are applied to SQL.
 
 ## Next Likely Steps
 - Consider transaction-aware `ROLLBACK` support for Spring-managed tests.
 - Add transaction-aware examples and utilities for Spring-managed rollback workflows.
 - Decide whether row-level assertion DSL needs stronger field/path matchers beyond simple column equality.
+- Decide whether datasource routing also needs entity-name bindings in addition to table names and glob patterns.

@@ -3,6 +3,8 @@ package com.github.sailfishc.flowtest.v2.fixture.jdbc;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecution;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureMaterializer;
+import com.github.sailfishc.flowtest.v2.observe.rdbms.FlowTestDataSourceRegistry;
+import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntityRegistration;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
@@ -20,29 +22,51 @@ import java.util.Map;
 public final class JdbcFixtureExecutor implements FixtureExecutor {
 
     private final DataSource dataSource;
+    private final FlowTestDataSourceRegistry dataSourceRegistry;
     private final FixtureAdapterRegistry adapterRegistry;
     private final FixtureMaterializer materializer;
+    private final JdbcObservationRegistry observationRegistry;
 
     public JdbcFixtureExecutor(DataSource dataSource, JdbcObservationRegistry observationRegistry) {
         this(dataSource, JdbcFixtureAdapters.fromObservationRegistry(observationRegistry));
+    }
+
+    public JdbcFixtureExecutor(FlowTestDataSourceRegistry dataSourceRegistry, JdbcObservationRegistry observationRegistry) {
+        this(dataSourceRegistry, JdbcFixtureAdapters.fromObservationRegistry(observationRegistry), observationRegistry);
     }
 
     public JdbcFixtureExecutor(DataSource dataSource, FixtureAdapterRegistry adapterRegistry) {
         this(dataSource, adapterRegistry, new FixtureMaterializer());
     }
 
+    public JdbcFixtureExecutor(FlowTestDataSourceRegistry dataSourceRegistry,
+                               FixtureAdapterRegistry adapterRegistry,
+                               JdbcObservationRegistry observationRegistry) {
+        this(null, dataSourceRegistry, JdbcFixtureAdapters.merge(adapterRegistry, observationRegistry), new FixtureMaterializer(), observationRegistry);
+    }
+
     public JdbcFixtureExecutor(DataSource dataSource,
                                FixtureAdapterRegistry adapterRegistry,
                                JdbcObservationRegistry observationRegistry) {
-        this(dataSource, JdbcFixtureAdapters.merge(adapterRegistry, observationRegistry), new FixtureMaterializer());
+        this(dataSource, null, JdbcFixtureAdapters.merge(adapterRegistry, observationRegistry), new FixtureMaterializer(), observationRegistry);
     }
 
     public JdbcFixtureExecutor(DataSource dataSource,
                                FixtureAdapterRegistry adapterRegistry,
                                FixtureMaterializer materializer) {
+        this(dataSource, null, adapterRegistry, materializer, null);
+    }
+
+    private JdbcFixtureExecutor(DataSource dataSource,
+                                FlowTestDataSourceRegistry dataSourceRegistry,
+                                FixtureAdapterRegistry adapterRegistry,
+                                FixtureMaterializer materializer,
+                                JdbcObservationRegistry observationRegistry) {
         this.dataSource = dataSource;
+        this.dataSourceRegistry = dataSourceRegistry;
         this.adapterRegistry = adapterRegistry;
         this.materializer = materializer;
+        this.observationRegistry = observationRegistry;
     }
 
     @Override
@@ -51,7 +75,7 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
         for (FixtureSpec<?> fixture : fixtures) {
             insertFixture(fixture, resolved.get(fixture.getHandle()));
         }
-        return new JdbcFixtureExecution(dataSource, adapterRegistry, fixtures, resolved);
+        return new JdbcFixtureExecution(dataSource, dataSourceRegistry, adapterRegistry, observationRegistry, fixtures, resolved);
     }
 
     private <T> void insertFixture(FixtureSpec<T> fixture, Object value) throws Exception {
@@ -59,7 +83,7 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
         FixtureEntityAdapter<T> adapter = adapterRegistry.requireAdapter(fixture.getEntityType());
         Connection connection = null;
         try {
-            connection = dataSource.getConnection();
+            connection = resolveDataSource(fixture.getEntityType()).getConnection();
             adapter.insert(connection, entity);
         } finally {
             if (connection != null) {
@@ -71,17 +95,23 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
     private static final class JdbcFixtureExecution implements FixtureExecution {
 
         private final DataSource dataSource;
+        private final FlowTestDataSourceRegistry dataSourceRegistry;
         private final FixtureAdapterRegistry adapterRegistry;
+        private final JdbcObservationRegistry observationRegistry;
         private final List<FixtureSpec<?>> fixtures;
         private final Map<FixtureHandle<?>, Object> resolved;
         private boolean cleaned;
 
         private JdbcFixtureExecution(DataSource dataSource,
+                                     FlowTestDataSourceRegistry dataSourceRegistry,
                                      FixtureAdapterRegistry adapterRegistry,
+                                     JdbcObservationRegistry observationRegistry,
                                      List<FixtureSpec<?>> fixtures,
                                      Map<FixtureHandle<?>, Object> resolved) {
             this.dataSource = dataSource;
+            this.dataSourceRegistry = dataSourceRegistry;
             this.adapterRegistry = adapterRegistry;
+            this.observationRegistry = observationRegistry;
             this.fixtures = new ArrayList<FixtureSpec<?>>(fixtures);
             this.resolved = new LinkedHashMap<FixtureHandle<?>, Object>(resolved);
         }
@@ -102,7 +132,7 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
             T current = resolve(handle);
             Connection connection = null;
             try {
-                connection = dataSource.getConnection();
+                connection = resolveDataSource(handle.getType()).getConnection();
                 T reloaded = adapter.reload(connection, current);
                 resolved.put(handle, reloaded);
                 return reloaded;
@@ -130,7 +160,7 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
             T entity = fixture.getEntityType().cast(resolved.get(fixture.getHandle()));
             Connection connection = null;
             try {
-                connection = dataSource.getConnection();
+                connection = resolveDataSource(fixture.getEntityType()).getConnection();
                 adapter.delete(connection, entity);
             } finally {
                 if (connection != null) {
@@ -138,5 +168,30 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
                 }
             }
         }
+
+        private DataSource resolveDataSource(Class<?> entityType) {
+            if (dataSourceRegistry == null) {
+                return dataSource;
+            }
+            JdbcEntityRegistration registration = observationRegistry.getEntityRegistrations().get(entityType);
+            if (registration == null) {
+                throw new IllegalArgumentException("No JDBC entity registration found for " + entityType.getName());
+            }
+            return dataSourceRegistry.requireDataSource(registration.getIdentity().getTableName());
+        }
+    }
+
+    private DataSource resolveDataSource(Class<?> entityType) {
+        if (dataSourceRegistry == null) {
+            return dataSource;
+        }
+        if (observationRegistry == null) {
+            throw new IllegalStateException("Observation registry is required for multi-data-source fixture execution");
+        }
+        JdbcEntityRegistration registration = observationRegistry.getEntityRegistrations().get(entityType);
+        if (registration == null) {
+            throw new IllegalArgumentException("No JDBC entity registration found for " + entityType.getName());
+        }
+        return dataSourceRegistry.requireDataSource(registration.getIdentity().getTableName());
     }
 }

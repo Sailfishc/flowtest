@@ -1,6 +1,6 @@
 # FlowTest V2 Integrations
 
-`flowtest-v2` is split into a small runtime plus explicit integrations. The runtime does not guess tables, routes, or fixture adapters. You register those pieces yourself.
+`flowtest-v2` is split into a small runtime plus explicit integrations. The runtime does not guess routes, and it still requires explicit table/entity registration. For common JDBC usage, fixture adapters and datasource routing can now be derived from registration metadata plus Spring Boot properties.
 
 ## JUnit 5
 
@@ -42,6 +42,7 @@ public class OrderFlowTest implements ScenarioExecutorProvider {
 ## Spring Boot
 
 Add `flowtest-v2-spring-boot-starter`. The starter auto-configures:
+- `FlowTestDataSourceRegistry`
 - `FixtureAdapterRegistry`
 - `JdbcObservationRegistry`
 - `FixtureExecutor`
@@ -80,6 +81,41 @@ JdbcObservationRegistry jdbcObservationRegistry() {
 ```
 
 Keep a custom `FixtureEntityAdapter` only for special persistence logic such as multi-table inserts, generated keys, or non-standard JDBC types.
+
+### Multi-DataSource Routing
+
+In Spring Boot, datasource routing should live in configuration, not in the scenario DSL. Bind tables or glob patterns to datasource bean names once:
+
+```yaml
+flowtest:
+  v2:
+    datasource:
+      default-name: orderDs
+      bindings:
+        - name: orderDs
+          tables: [ft_order, ft_order_item]
+          patterns: [t_order_*]
+        - name: accountDs
+          tables: [ft_user, ft_account]
+```
+
+Matching rules are:
+1. Exact table name
+2. Glob pattern
+3. `default-name`
+4. Fail fast if nothing matches
+
+If multiple patterns match the same table, startup fails fast when the table is first resolved.
+
+Once routing is configured, the test DSL stays unchanged:
+
+```java
+.observe(o -> o
+    .fixture(user)
+    .shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+```
+
+The framework resolves `ft_user` and `ft_order` to the correct `DataSource` automatically.
 
 ## Manual JDBC Wiring
 
@@ -127,6 +163,18 @@ The example uses:
 - TestNG listener-based executor injection
 - Spring Boot auto-configured `ScenarioExecutor`
 - row-level assertion for the inserted order row
+
+### Complete Spring Boot + TestNG Multi-DataSource Example
+
+Use `flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java`
+when you need fixture and observation to span multiple datasource beans.
+
+That example shows:
+- two explicit `DataSource` beans: `orderDs` and `accountDs`
+- `flowtest.v2.datasource.bindings[...]` in `@SpringBootTest(properties = ...)`
+- fixture-backed `ft_user` routed to `accountDs`
+- sharded `ft_order` routed to `orderDs`
+- a single scenario that updates one datasource and inserts into another
 
 ## Row-Level Assertions
 
