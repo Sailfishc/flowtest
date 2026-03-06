@@ -35,13 +35,15 @@
     </scm>
 
     <modules>
-        <module>flowtest-core</module>
-        <module>flowtest-assertj-db</module>
-        <module>flowtest-junit5</module>
-        <module>flowtest-testng</module>
-        <module>flowtest-mockito</module>
-        <module>flowtest-spring-boot-starter</module>
-        <module>flowtest-v2</module>
+        <module>flowtest-v2-spec</module>
+        <module>flowtest-v2-assertion</module>
+        <module>flowtest-v2-fixture</module>
+        <module>flowtest-v2-observe-rdbms</module>
+        <module>flowtest-v2-runtime</module>
+        <module>flowtest-v2-junit5</module>
+        <module>flowtest-v2-testng</module>
+        <module>flowtest-v2-spring-boot-starter</module>
+        <module>flowtest-v2-cases</module>
     </modules>
 
     <properties>
@@ -78,35 +80,50 @@
                 <scope>import</scope>
             </dependency>
 
-            <!-- FlowTest modules -->
+            <!-- FlowTest V2 modules -->
             <dependency>
                 <groupId>com.github.Sailfishc</groupId>
-                <artifactId>flowtest-core</artifactId>
+                <artifactId>flowtest-v2-spec</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.github.Sailfishc</groupId>
-                <artifactId>flowtest-assertj-db</artifactId>
+                <artifactId>flowtest-v2-assertion</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.github.Sailfishc</groupId>
-                <artifactId>flowtest-junit5</artifactId>
+                <artifactId>flowtest-v2-fixture</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.github.Sailfishc</groupId>
-                <artifactId>flowtest-spring-boot-starter</artifactId>
+                <artifactId>flowtest-v2-observe-rdbms</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.github.Sailfishc</groupId>
-                <artifactId>flowtest-mockito</artifactId>
+                <artifactId>flowtest-v2-runtime</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.github.Sailfishc</groupId>
-                <artifactId>flowtest-testng</artifactId>
+                <artifactId>flowtest-v2-junit5</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.Sailfishc</groupId>
+                <artifactId>flowtest-v2-testng</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.Sailfishc</groupId>
+                <artifactId>flowtest-v2-spring-boot-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.Sailfishc</groupId>
+                <artifactId>flowtest-v2-cases</artifactId>
                 <version>${project.version}</version>
             </dependency>
 
