@@ -53,10 +53,14 @@ For normal bean-style fixtures, you only need to register entities and observed 
 You still need to provide business registrations:
 
 ```java
+@JdbcEntity(table = "ft_user", keyColumns = "id")
+public class TestUser {
+}
+
 @Bean
 JdbcObservationRegistry jdbcObservationRegistry() {
     return new JdbcObservationRegistry()
-        .registerEntity(TestUser.class, "ft_user", "id")
+        .registerEntity(TestUser.class)
         .registerTable("ft_order", "id");
 }
 ```
@@ -76,6 +80,27 @@ JdbcObservationRegistry jdbcObservationRegistry() {
 ```
 
 Keep a custom `FixtureEntityAdapter` only for special persistence logic such as multi-table inserts, generated keys, or non-standard JDBC types.
+
+## Manual JDBC Wiring
+
+The same convention-based adapter generation is available without Spring Boot:
+
+```java
+@JdbcEntity(table = "ft_user", keyColumns = "id")
+public class TestUser {
+}
+
+JdbcObservationRegistry observationRegistry = new JdbcObservationRegistry()
+    .registerEntity(TestUser.class)
+    .registerTable("ft_order", "id");
+
+ScenarioExecutor executor = new ScenarioExecutor(
+    new JdbcFixtureExecutor(dataSource, observationRegistry),
+    new JdbcObservationExecutor(dataSource, observationRegistry)
+);
+```
+
+This is the lowest-level path that still avoids handwritten JDBC fixture adapters for normal entities.
 
 ### Complete Spring Boot + TestNG Example
 

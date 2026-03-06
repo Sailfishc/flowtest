@@ -3,9 +3,7 @@ package com.github.sailfishc.flowtest.v2.junit5;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.FixtureAdapterRegistry;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.FixtureEntityAdapter;
-import com.github.sailfishc.flowtest.v2.fixture.jdbc.GenericJdbcFixtureEntityAdapter;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.JdbcFixtureExecutor;
-import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntityRegistration;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationExecutor;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
@@ -209,6 +207,11 @@ public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachC
             return this;
         }
 
+        public Builder registerObservedEntity(Class<?> entityType) {
+            registry().registerEntity(entityType);
+            return this;
+        }
+
         public Builder registerNamedTable(String resourceName, String tableName, String... keyColumns) {
             registry().registerNamedTable(resourceName, tableName, keyColumns);
             return this;
@@ -254,7 +257,7 @@ public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachC
                 public ScenarioExecutor create() {
                     FixtureExecutor resolvedFixtureExecutor = fixtureExecutor != null
                         ? fixtureExecutor
-                        : new JdbcFixtureExecutor(dataSource, effectiveFixtureAdapters());
+                        : new JdbcFixtureExecutor(dataSource, fixtureAdapters(), registry());
                     ObservationExecutor resolvedObservationExecutor = new JdbcObservationExecutor(dataSource, registry());
                     return new ScenarioExecutor(resolvedFixtureExecutor, resolvedObservationExecutor);
                 }
@@ -273,23 +276,6 @@ public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachC
                 fixtureAdapterRegistry = new FixtureAdapterRegistry();
             }
             return fixtureAdapterRegistry;
-        }
-
-        private FixtureAdapterRegistry effectiveFixtureAdapters() {
-            FixtureAdapterRegistry effective = new FixtureAdapterRegistry().registerAll(fixtureAdapters());
-            for (JdbcEntityRegistration registration : registry().getEntityRegistrations().values()) {
-                if (effective.hasAdapter(registration.getEntityType())) {
-                    continue;
-                }
-                effective.register(GenericJdbcFixtureEntityAdapter.of(
-                    registration.getEntityType(),
-                    registration.getIdentity().getTableName(),
-                    registration.getIdentity().getKeyColumns(),
-                    registration.getPropertyColumns(),
-                    registration.getIgnoredProperties()
-                ));
-            }
-            return effective;
         }
     }
 

@@ -1,6 +1,7 @@
 package com.github.sailfishc.flowtest.v2.junit5;
 
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
+import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
@@ -23,7 +24,7 @@ class FlowTestV2ExtensionAutoFixtureAdapterTest {
     @RegisterExtension
     static final FlowTestV2Extension FLOW = FlowTestV2Extension.builder()
         .dataSource(DATA_SOURCE)
-        .registerObservedEntity(TestUser.class, "ft_user", "id")
+        .registerObservedEntity(TestUser.class)
         .build();
 
     @BeforeEach
@@ -104,6 +105,7 @@ class FlowTestV2ExtensionAutoFixtureAdapterTest {
         }
     }
 
+    @JdbcEntity(table = "ft_user", keyColumns = {"id"})
     static final class TestUser {
 
         private Long id;

@@ -2,6 +2,7 @@ package com.github.sailfishc.flowtest.v2.testng.springboot;
 
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.assertion.RowAssertions;
+import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
@@ -123,7 +124,7 @@ public class FlowTestV2SpringBootTestNgExampleTest extends AbstractTestNGSpringC
         @Bean
         public JdbcObservationRegistry jdbcObservationRegistry() {
             return new JdbcObservationRegistry()
-                .registerEntity(TestUser.class, "ft_user", "id")
+                .registerEntity(TestUser.class)
                 .registerTable("ft_order", "id");
         }
 
@@ -153,6 +154,7 @@ public class FlowTestV2SpringBootTestNgExampleTest extends AbstractTestNGSpringC
         }
     }
 
+    @JdbcEntity(table = "ft_user", keyColumns = {"id"})
     static final class TestUser {
 
         private Long id;
