@@ -2,6 +2,7 @@ package com.github.sailfishc.flowtest.v2.runtime;
 
 import com.github.sailfishc.flowtest.v2.assertion.ExpectationSet;
 import com.github.sailfishc.flowtest.v2.assertion.FixtureStateExpectation;
+import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeAssertionExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.ResultAssertion;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecution;
@@ -89,6 +90,7 @@ public final class ScenarioExecutor {
             assertion.verify(result, failure);
         }
         verifyChanges(expectations.getChangeExpectations(), diff);
+        verifyChangeAssertions(expectations.getChangeAssertionExpectations(), diff);
         verifyFixtures(expectations.getFixtureExpectations(), fixtureExecution);
     }
 
@@ -110,6 +112,16 @@ public final class ScenarioExecutor {
                 throw new AssertionError("Expected modified count " + expectation.getExpectedModified()
                     + " for resource " + expectation.getResourceName() + " but was " + actual.getModifiedCount());
             }
+        }
+    }
+
+    private void verifyChangeAssertions(List<ResourceChangeAssertionExpectation> expectations, ObservationDiff diff) {
+        for (ResourceChangeAssertionExpectation expectation : expectations) {
+            ResourceChange actual = diff.getChange(expectation.getResourceName());
+            if (actual == null) {
+                throw new AssertionError("No observed resource named " + expectation.getResourceName());
+            }
+            expectation.getAssertion().verify(actual);
         }
     }
 

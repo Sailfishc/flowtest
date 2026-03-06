@@ -3,8 +3,12 @@ package com.github.sailfishc.flowtest.v2.runtime;
 import com.github.sailfishc.flowtest.v2.assertion.ExpectationSet;
 import com.github.sailfishc.flowtest.v2.assertion.FixtureAssertion;
 import com.github.sailfishc.flowtest.v2.assertion.FixtureStateExpectation;
+import com.github.sailfishc.flowtest.v2.assertion.ModifiedRowAssertion;
+import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeAssertion;
+import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeAssertionExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.ResultAssertion;
+import com.github.sailfishc.flowtest.v2.assertion.RowAssertion;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
@@ -142,6 +146,8 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         private final ThrowingSupplier<R> action;
         private final List<ResultAssertion<R>> resultAssertions = new ArrayList<ResultAssertion<R>>();
         private final List<ResourceChangeExpectation> changeExpectations = new ArrayList<ResourceChangeExpectation>();
+        private final List<ResourceChangeAssertionExpectation> changeAssertionExpectations =
+            new ArrayList<ResourceChangeAssertionExpectation>();
         private final List<FixtureStateExpectation<?>> fixtureExpectations = new ArrayList<FixtureStateExpectation<?>>();
 
         private DefaultScenarioPlan(String name,
@@ -170,7 +176,7 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
                 observations,
                 cleanupPolicy,
                 action,
-                new ExpectationSet<R>(resultAssertions, changeExpectations, fixtureExpectations)
+                new ExpectationSet<R>(resultAssertions, changeExpectations, changeAssertionExpectations, fixtureExpectations)
             );
         }
 
@@ -239,9 +245,92 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         }
 
         @Override
+        public ThenSpec<R> change(String resourceName, ResourceChangeAssertion assertion) {
+            changeAssertionExpectations.add(new ResourceChangeAssertionExpectation(resourceName, assertion));
+            return this;
+        }
+
+        @Override
+        public ThenSpec<R> insertedRow(String resourceName, final RowAssertion assertion) {
+            return change(resourceName, new ResourceChangeAssertion() {
+                @Override
+                public void verify(com.github.sailfishc.flowtest.v2.spec.ResourceChange change) {
+                    assertAnyInsertedRowMatches(change, assertion);
+                }
+            });
+        }
+
+        @Override
+        public ThenSpec<R> deletedRow(String resourceName, final RowAssertion assertion) {
+            return change(resourceName, new ResourceChangeAssertion() {
+                @Override
+                public void verify(com.github.sailfishc.flowtest.v2.spec.ResourceChange change) {
+                    assertAnyDeletedRowMatches(change, assertion);
+                }
+            });
+        }
+
+        @Override
+        public ThenSpec<R> modifiedRow(String resourceName, final ModifiedRowAssertion assertion) {
+            return change(resourceName, new ResourceChangeAssertion() {
+                @Override
+                public void verify(com.github.sailfishc.flowtest.v2.spec.ResourceChange change) {
+                    assertAnyModifiedRowMatches(change, assertion);
+                }
+            });
+        }
+
+        @Override
         public <T> ThenSpec<R> fixture(FixtureHandle<T> handle, FixtureAssertion<T> assertion) {
             fixtureExpectations.add(new FixtureStateExpectation<T>(handle, assertion));
             return this;
+        }
+
+        private void assertAnyInsertedRowMatches(com.github.sailfishc.flowtest.v2.spec.ResourceChange change,
+                                                 RowAssertion assertion) {
+            assertAnyRowMatches("inserted", change.getInsertedRows(), assertion);
+        }
+
+        private void assertAnyDeletedRowMatches(com.github.sailfishc.flowtest.v2.spec.ResourceChange change,
+                                                RowAssertion assertion) {
+            assertAnyRowMatches("deleted", change.getDeletedRows(), assertion);
+        }
+
+        private void assertAnyModifiedRowMatches(com.github.sailfishc.flowtest.v2.spec.ResourceChange change,
+                                                 ModifiedRowAssertion assertion) {
+            AssertionError lastError = null;
+            for (com.github.sailfishc.flowtest.v2.spec.ModifiedRow row : change.getModifiedRows()) {
+                try {
+                    assertion.verify(row);
+                    return;
+                } catch (AssertionError ex) {
+                    lastError = ex;
+                }
+            }
+            String message = "No modified row matched expectation for resource " + change.getResourceName();
+            if (lastError == null) {
+                throw new AssertionError(message);
+            }
+            throw new AssertionError(message + ": " + lastError.getMessage(), lastError);
+        }
+
+        private void assertAnyRowMatches(String rowType,
+                                         List<com.github.sailfishc.flowtest.v2.spec.RowSnapshot> rows,
+                                         RowAssertion assertion) {
+            AssertionError lastError = null;
+            for (com.github.sailfishc.flowtest.v2.spec.RowSnapshot row : rows) {
+                try {
+                    assertion.verify(row);
+                    return;
+                } catch (AssertionError ex) {
+                    lastError = ex;
+                }
+            }
+            String message = "No " + rowType + " row matched expectation";
+            if (lastError == null) {
+                throw new AssertionError(message);
+            }
+            throw new AssertionError(message + ": " + lastError.getMessage(), lastError);
         }
     }
 }

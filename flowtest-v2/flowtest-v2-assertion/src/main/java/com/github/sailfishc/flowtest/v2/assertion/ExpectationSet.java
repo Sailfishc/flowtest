@@ -11,13 +11,17 @@ public final class ExpectationSet<R> {
 
     private final List<ResultAssertion<R>> resultAssertions;
     private final List<ResourceChangeExpectation> changeExpectations;
+    private final List<ResourceChangeAssertionExpectation> changeAssertionExpectations;
     private final List<FixtureStateExpectation<?>> fixtureExpectations;
 
     public ExpectationSet(List<ResultAssertion<R>> resultAssertions,
                           List<ResourceChangeExpectation> changeExpectations,
+                          List<ResourceChangeAssertionExpectation> changeAssertionExpectations,
                           List<FixtureStateExpectation<?>> fixtureExpectations) {
         this.resultAssertions = Collections.unmodifiableList(new ArrayList<ResultAssertion<R>>(resultAssertions));
         this.changeExpectations = Collections.unmodifiableList(new ArrayList<ResourceChangeExpectation>(changeExpectations));
+        this.changeAssertionExpectations = Collections.unmodifiableList(
+            new ArrayList<ResourceChangeAssertionExpectation>(changeAssertionExpectations));
         this.fixtureExpectations = Collections.unmodifiableList(new ArrayList<FixtureStateExpectation<?>>(fixtureExpectations));
     }
 
@@ -25,6 +29,7 @@ public final class ExpectationSet<R> {
         return new ExpectationSet<R>(
             Collections.<ResultAssertion<R>>emptyList(),
             Collections.<ResourceChangeExpectation>emptyList(),
+            Collections.<ResourceChangeAssertionExpectation>emptyList(),
             Collections.<FixtureStateExpectation<?>>emptyList()
         );
     }
@@ -35,6 +40,10 @@ public final class ExpectationSet<R> {
 
     public List<ResourceChangeExpectation> getChangeExpectations() {
         return changeExpectations;
+    }
+
+    public List<ResourceChangeAssertionExpectation> getChangeAssertionExpectations() {
+        return changeAssertionExpectations;
     }
 
     public List<FixtureStateExpectation<?>> getFixtureExpectations() {

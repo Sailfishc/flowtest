@@ -1,6 +1,8 @@
 package com.github.sailfishc.flowtest.v2.cases;
 
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
+import com.github.sailfishc.flowtest.v2.assertion.ModifiedRowAssertions;
+import com.github.sailfishc.flowtest.v2.assertion.RowAssertions;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.FixtureAdapterRegistry;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.FixtureEntityAdapter;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.JdbcFixtureExecutor;
@@ -108,6 +110,36 @@ class FlowTestV2CasesTest {
         assertThat(result.getResult()).isEqualTo("ok");
         assertThat(queryForLong("select count(*) from ft_user")).isEqualTo(0L);
         assertThat(queryForLong("select count(*) from ft_order where tenant_id = 100")).isEqualTo(0L);
+    }
+
+    @Test
+    void shouldSupportRowLevelAssertionsForInsertedAndModifiedData() throws Exception {
+        executeSql("insert into ft_order(id, tenant_id, user_id, status) values (301, 100, 7, 'CREATED')");
+
+        ScenarioExecutor executor = new ScenarioExecutor(new JdbcObservationExecutor(
+            dataSource,
+            new JdbcObservationRegistry().registerTable("ft_order", "id")
+        ));
+
+        ScenarioExecutionResult<String> result = FlowTestV2.scenario("row-level-order")
+            .observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+            .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
+            .when(() -> {
+                executeSql("update ft_order set status = 'PAID' where id = 301");
+                executeSql("insert into ft_order(id, tenant_id, user_id, status) values (302, 100, 8, 'CREATED')");
+                return "changed";
+            })
+            .then(t -> t.expectNoException()
+                .insertedRow("ft_order", RowAssertions.allOf(
+                    RowAssertions.columnEquals("id", 302L),
+                    RowAssertions.columnEquals("status", "CREATED")
+                ))
+                .modifiedRow("ft_order", ModifiedRowAssertions.changed("status", "CREATED", "PAID")))
+            .execute(executor);
+
+        assertThat(result.getResult()).isEqualTo("changed");
+        assertThat(queryForString("select status from ft_order where id = 301")).isEqualTo("CREATED");
+        assertThat(queryForLong("select count(*) from ft_order where id = 302")).isEqualTo(0L);
     }
 
     @Test

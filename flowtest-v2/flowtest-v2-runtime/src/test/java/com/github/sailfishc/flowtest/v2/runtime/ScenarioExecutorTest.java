@@ -3,6 +3,8 @@ package com.github.sailfishc.flowtest.v2.runtime;
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecution;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
+import com.github.sailfishc.flowtest.v2.assertion.ModifiedRowAssertions;
+import com.github.sailfishc.flowtest.v2.assertion.RowAssertions;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
@@ -69,6 +71,34 @@ class ScenarioExecutorTest {
         assertThat(result.getResult()).isEqualTo("ok");
         assertThat(fixtureExecutor.isReloaded()).isTrue();
         assertThat(fixtureExecutor.isCleaned()).isTrue();
+    }
+
+    @Test
+    void shouldVerifyRowLevelChangeAssertions() throws Exception {
+        List<ObservationSnapshot> snapshots = Arrays.asList(
+            snapshot("orders", row(1L, "status", "CREATED", "tenant_id", 100L)),
+            snapshot(
+                "orders",
+                row(1L, "status", "PAID", "tenant_id", 100L),
+                row(2L, "status", "CREATED", "tenant_id", 100L)
+            )
+        );
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(snapshots);
+        ScenarioExecutor executor = new ScenarioExecutor(observationExecutor);
+
+        ScenarioExecutionResult<String> result = FlowTestV2.scenario("row-level")
+            .observe(o -> o.table("orders"))
+            .when(() -> "done")
+            .then(t -> t.expectNoException()
+                .insertedRow("orders", RowAssertions.allOf(
+                    RowAssertions.columnEquals("id", 2L),
+                    RowAssertions.columnEquals("status", "CREATED")
+                ))
+                .modifiedRow("orders", ModifiedRowAssertions.changed("status", "CREATED", "PAID"))
+                .change("orders", change -> assertThat(change.getModifiedRows()).hasSize(1)))
+            .execute(executor);
+
+        assertThat(result.getResult()).isEqualTo("done");
     }
 
     @Test
