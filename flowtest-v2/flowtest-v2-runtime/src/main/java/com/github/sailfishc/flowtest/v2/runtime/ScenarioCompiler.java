@@ -1,5 +1,6 @@
 package com.github.sailfishc.flowtest.v2.runtime;
 
+import com.github.sailfishc.flowtest.v2.assertion.FixtureStateExpectation;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
 import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
@@ -41,6 +42,12 @@ public final class ScenarioCompiler {
             }
             if (observation.getFixtureHandle() != null && !handles.contains(observation.getFixtureHandle())) {
                 issues.add("Observed fixture handle is not declared in given: " + observation.getFixtureHandle().identifier());
+            }
+        }
+
+        for (FixtureStateExpectation<?> expectation : definition.getExpectations().getFixtureExpectations()) {
+            if (!handles.contains(expectation.getHandle())) {
+                issues.add("Fixture expectation references undeclared handle: " + expectation.getHandle().identifier());
             }
         }
         return issues;

@@ -14,6 +14,7 @@ import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
 import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
+import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
 import com.github.sailfishc.flowtest.v2.spec.RouteScope;
 import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
 import com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier;
@@ -45,12 +46,6 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
     @Override
     public ScenarioBuilder watch(Consumer<WatchSpec> watch) {
         watch.accept(new DefaultWatchSpec(observations));
-        return this;
-    }
-
-    @Override
-    public ScenarioBuilder observe(Consumer<ObserveSpec> observe) {
-        observe.accept(new DefaultObserveSpec(observations));
         return this;
     }
 
@@ -89,93 +84,6 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
                 }
             }
             fixtures.add(new FixtureSpec<T>(handle, handle.getType(), declaredTraits));
-            return this;
-        }
-    }
-
-    private static final class DefaultObserveSpec implements ObserveSpec {
-
-        private final List<ObservationSpec> observations;
-
-        private DefaultObserveSpec(List<ObservationSpec> observations) {
-            this.observations = observations;
-        }
-
-        @Override
-        public ObserveSpec fixture(FixtureHandle<?> handle) {
-            observations.add(ObservationSpec.fixture(handle));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec table(String tableName) {
-            observations.add(ObservationSpec.table(tableName, TableRouteScope.empty(), RouteScope.empty(), false));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec table(String tableName, RouteScope routeScope) {
-            observations.add(ObservationSpec.table(tableName, TableRouteScope.empty(), routeScope, false));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec table(String tableName, TableRouteScope tableRouteScope) {
-            observations.add(ObservationSpec.table(tableName, tableRouteScope, RouteScope.empty(), false));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec table(String tableName, TableRouteScope tableRouteScope, RouteScope routeScope) {
-            observations.add(ObservationSpec.table(tableName, tableRouteScope, routeScope, false));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec shardedTable(String tableName, RouteScope routeScope) {
-            observations.add(ObservationSpec.table(tableName, TableRouteScope.empty(), routeScope, true));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec shardedTable(String tableName, TableRouteScope tableRouteScope, RouteScope routeScope) {
-            observations.add(ObservationSpec.table(tableName, tableRouteScope, routeScope, true));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec entity(Class<?> entityType) {
-            observations.add(ObservationSpec.entity(entityType, TableRouteScope.empty(), RouteScope.empty(), false));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec entity(Class<?> entityType, RouteScope routeScope) {
-            observations.add(ObservationSpec.entity(entityType, TableRouteScope.empty(), routeScope, false));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec entity(Class<?> entityType, TableRouteScope tableRouteScope) {
-            observations.add(ObservationSpec.entity(entityType, tableRouteScope, RouteScope.empty(), false));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec entity(Class<?> entityType, TableRouteScope tableRouteScope, RouteScope routeScope) {
-            observations.add(ObservationSpec.entity(entityType, tableRouteScope, routeScope, false));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec shardedEntity(Class<?> entityType, RouteScope routeScope) {
-            observations.add(ObservationSpec.entity(entityType, TableRouteScope.empty(), routeScope, true));
-            return this;
-        }
-
-        @Override
-        public ObserveSpec shardedEntity(Class<?> entityType, TableRouteScope tableRouteScope, RouteScope routeScope) {
-            observations.add(ObservationSpec.entity(entityType, tableRouteScope, routeScope, true));
             return this;
         }
     }
@@ -253,6 +161,16 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
                 merged = merged.append(condition);
             }
             return replace(current.getTableRouteScope(), merged, true);
+        }
+
+        @Override
+        public WatchResourceSpec dynamicTableBy(String key, Object value) {
+            return tableBy(key, value);
+        }
+
+        @Override
+        public WatchResourceSpec dynamicTable(TableRouteScope tableRouteScope) {
+            return tableRoute(tableRouteScope);
         }
 
         @Override
@@ -351,6 +269,11 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         @Override
         public CompiledScenario<R> compile() {
             return new ScenarioCompiler().compile(definition());
+        }
+
+        @Override
+        public ScenarioExecutionResult<R> run() throws Exception {
+            return compile().run();
         }
 
         @Override

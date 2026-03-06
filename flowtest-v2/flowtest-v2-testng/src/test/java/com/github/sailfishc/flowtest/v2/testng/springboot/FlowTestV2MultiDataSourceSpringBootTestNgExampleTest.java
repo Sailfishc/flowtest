@@ -3,14 +3,10 @@ package com.github.sailfishc.flowtest.v2.testng.springboot;
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
-import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
-import com.github.sailfishc.flowtest.v2.spec.RouteScope;
-import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Executor;
 import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Listener;
 import org.h2.jdbcx.JdbcDataSource;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -59,9 +55,6 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
     @Autowired
     private ScenarioExecutor springScenarioExecutor;
 
-    @FlowTestV2Executor
-    private ScenarioExecutor executor;
-
     @BeforeMethod
     public void setUpSchema() throws Exception {
         executeSql(orderDataSource, "drop table if exists ft_order");
@@ -74,26 +67,29 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
     public void shouldRouteAcrossConfiguredDataSources() throws Exception {
         FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
 
-        ScenarioExecutionResult<Long> result = FlowTestV2.scenario("spring-boot-testng-multi-datasource")
+        FlowTestV2.scenario("spring-boot-testng-multi-datasource")
             .given(g -> g.persist(user,
                 idTrait(1L),
                 tenantTrait(100L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .observe(o -> o
+            .watch(w -> w
                 .fixture(user)
-                .shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+                .table("ft_order").route("tenant_id", 100L))
             .when(() -> {
                 executeSql(accountDataSource, "update ft_user set balance = 80 where id = 1");
                 executeSql(orderDataSource, "insert into ft_order(id, tenant_id, user_id, status) values (10, 100, 1, 'CREATED')");
                 return 10L;
             })
-            .then(t -> t.expectNoException()
-                .modified(TestUser.class.getName(), 1)
-                .inserted("ft_order", 1))
-            .execute(executor);
+            .verify(ctx -> {
+                ctx.success();
+                assertThat(ctx.result()).isEqualTo(10L);
+                assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(80L);
+                assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
+                assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
+            })
+            .run();
 
-        assertThat(result.getResult()).isEqualTo(10L);
         assertThat(queryForLong(accountDataSource, "select count(*) from ft_user")).isEqualTo(0L);
         assertThat(queryForLong(orderDataSource, "select count(*) from ft_order")).isEqualTo(0L);
     }

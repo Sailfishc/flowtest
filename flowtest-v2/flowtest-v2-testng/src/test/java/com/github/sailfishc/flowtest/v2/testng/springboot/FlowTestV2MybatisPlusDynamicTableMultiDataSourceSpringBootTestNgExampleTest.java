@@ -11,15 +11,10 @@ import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcDynamicTable;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
-import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
-import com.github.sailfishc.flowtest.v2.spec.RouteScope;
-import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
-import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Executor;
 import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Listener;
 import org.apache.ibatis.annotations.Mapper;
 import org.h2.jdbcx.JdbcDataSource;
@@ -71,9 +66,6 @@ public class FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExa
     @Autowired
     private CompositeOrderService compositeOrderService;
 
-    @FlowTestV2Executor
-    private ScenarioExecutor executor;
-
     @BeforeMethod
     public void setUpSchema() {
         orderJdbcTemplate.execute("drop table if exists ft_mp_order_dynamic_a");
@@ -89,27 +81,27 @@ public class FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExa
     public void shouldHandleMybatisPlusDynamicTableAcrossMultipleDataSources() throws Exception {
         FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
 
-        ScenarioExecutionResult<Long> result = FlowTestV2.scenario("spring-boot-testng-mybatis-plus-dynamic-table-multi-datasource")
+        FlowTestV2.scenario("spring-boot-testng-mybatis-plus-dynamic-table-multi-datasource")
             .given(g -> g.persist(user,
                 idTrait(1L),
                 tenantTrait(100L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .observe(o -> o
+            .watch(w -> w
                 .fixture(user)
-                .shardedTable(
-                    "ft_mp_order_dynamic",
-                    TableRouteScope.of("bucket", "a"),
-                    RouteScope.of(RouteCondition.eq("tenant_id", 100L))
-                ))
+                .table("ft_mp_order_dynamic")
+                    .dynamicTableBy("bucket", "a")
+                    .route("tenant_id", 100L))
             .when(() -> compositeOrderService.createOrder("a", 100L, 1L, 801L))
-            .then(t -> t.expectNoException()
-                .fixture(user, value -> assertThat(value.getBalance()).isEqualTo(80L))
-                .modified(TestUser.class.getName(), 1)
-                .inserted("ft_mp_order_dynamic", 1))
-            .execute(executor);
+            .verify(ctx -> {
+                ctx.success();
+                assertThat(ctx.result()).isEqualTo(801L);
+                assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(80L);
+                assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
+                assertThat(ctx.table("ft_mp_order_dynamic").insertedCount()).isEqualTo(1L);
+            })
+            .run();
 
-        assertThat(result.getResult()).isEqualTo(801L);
         assertThat(queryForLong(accountJdbcTemplate, "select count(*) from ft_user")).isEqualTo(0L);
         assertThat(queryForLong(orderJdbcTemplate, "select count(*) from ft_mp_order_dynamic_a")).isEqualTo(0L);
         assertThat(queryForLong(orderJdbcTemplate, "select count(*) from ft_mp_order_dynamic_b")).isEqualTo(0L);

@@ -8,6 +8,7 @@ import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationExecutor;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
+import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutors;
 import com.github.sailfishc.flowtest.v2.spec.ObservationExecutor;
 import org.junit.jupiter.api.extension.AfterEachCallback;
 import org.junit.jupiter.api.extension.BeforeEachCallback;
@@ -50,6 +51,7 @@ public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachC
     @Override
     public void afterEach(ExtensionContext context) {
         context.getStore(NAMESPACE).remove(EXECUTOR_KEY);
+        ScenarioExecutors.clear();
     }
 
     @Override
@@ -69,10 +71,12 @@ public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachC
     private ScenarioExecutor getOrCreateExecutor(ExtensionContext context) throws Exception {
         ScenarioExecutor executor = context.getStore(NAMESPACE).get(EXECUTOR_KEY, ScenarioExecutor.class);
         if (executor != null) {
+            ScenarioExecutors.bind(executor);
             return executor;
         }
         ScenarioExecutor created = createExecutor(context);
         context.getStore(NAMESPACE).put(EXECUTOR_KEY, created);
+        ScenarioExecutors.bind(created);
         return created;
     }
 

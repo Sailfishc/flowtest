@@ -3,14 +3,10 @@ package com.github.sailfishc.flowtest.v2.testng.springboot;
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
-import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
-import com.github.sailfishc.flowtest.v2.spec.RouteScope;
-import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Executor;
 import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Listener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringBootConfiguration;
@@ -49,9 +45,6 @@ public class FlowTestV2SpringBootTestNgExampleTest extends AbstractTestNGSpringC
     @Autowired
     private OrderService orderService;
 
-    @FlowTestV2Executor
-    private ScenarioExecutor executor;
-
     @BeforeMethod
     public void setUpSchema() {
         jdbcTemplate.execute("drop table if exists ft_order");
@@ -64,7 +57,7 @@ public class FlowTestV2SpringBootTestNgExampleTest extends AbstractTestNGSpringC
     public void shouldExecuteScenarioWithSpringBootAndTestNg() throws Exception {
         FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
 
-        ScenarioExecutionResult<Long> result = FlowTestV2.scenario("spring-boot-testng-create-order")
+        FlowTestV2.scenario("spring-boot-testng-create-order")
             .given(g -> g.persist(user,
                 idTrait(1L),
                 tenantTrait(100L),
@@ -85,7 +78,7 @@ public class FlowTestV2SpringBootTestNgExampleTest extends AbstractTestNGSpringC
                 assertThat(ctx.table("ft_order").insertedOne().getColumn("tenant_id")).isEqualTo(100L);
                 assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
             })
-            .execute(executor);
+            .run();
 
         assertThat(queryForLong("select count(*) from ft_user")).isEqualTo(0L);
         assertThat(queryForLong("select count(*) from ft_order where tenant_id = 100")).isEqualTo(0L);

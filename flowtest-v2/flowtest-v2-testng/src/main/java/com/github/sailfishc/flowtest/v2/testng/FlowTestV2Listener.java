@@ -2,6 +2,7 @@ package com.github.sailfishc.flowtest.v2.testng;
 
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
+import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutors;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
 import org.testng.ITestResult;
@@ -34,6 +35,7 @@ public final class FlowTestV2Listener implements IInvokedMethodListener {
                     + " or assign an existing ScenarioExecutor field before the test method runs.");
             }
             List<InjectedField> injectedFields = injectAnnotatedFields(instance, executor);
+            ScenarioExecutors.bind(executor);
             STATE_HOLDER.set(new TestState(executor, injectedFields));
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to prepare FlowTest V2 TestNG integration", ex);
@@ -55,15 +57,12 @@ public final class FlowTestV2Listener implements IInvokedMethodListener {
             }
         } finally {
             STATE_HOLDER.remove();
+            ScenarioExecutors.clear();
         }
     }
 
     public static ScenarioExecutor currentExecutor() {
-        TestState state = STATE_HOLDER.get();
-        if (state == null) {
-            throw new IllegalStateException("No active ScenarioExecutor for the current TestNG thread");
-        }
-        return state.executor;
+        return ScenarioExecutors.current();
     }
 
     private ScenarioExecutor resolveExecutor(Object instance) throws Exception {

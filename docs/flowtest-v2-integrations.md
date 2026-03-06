@@ -8,7 +8,7 @@
 
 ## JUnit 5
 
-Use `FlowTestV2Extension` when you want parameter injection for `ScenarioExecutor`.
+Use `FlowTestV2Extension` when you want JUnit 5 to bind the default executor for `.run()`. Parameter injection for `ScenarioExecutor` remains available, but it is no longer required in the common path.
 
 ```java
 @JdbcEntity(table = "ft_user", keyColumns = "id")
@@ -23,12 +23,15 @@ static final FlowTestV2Extension FLOW = FlowTestV2Extension.builder()
     .build();
 
 @Test
-void shouldCreateOrder(ScenarioExecutor executor) throws Exception {
+void shouldCreateOrder() throws Exception {
     FlowTestV2.scenario("create-order")
-        .observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+        .watch(w -> w.table("ft_order").route("tenant_id", 100L))
         .when(() -> service.create(...))
-        .then(t -> t.expectNoException().inserted("ft_order", 1))
-        .execute(executor);
+        .verify(ctx -> {
+            ctx.success();
+            assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
+        })
+        .run();
 }
 ```
 
@@ -36,16 +39,23 @@ You can also annotate the class with `@FlowTestV2Test` and implement `ScenarioEx
 
 ## TestNG
 
-Register `FlowTestV2Listener` and inject the executor into a field.
+Register `FlowTestV2Listener`, implement `ScenarioExecutorProvider`, and call `.run()`.
 
 ```java
 @Listeners(FlowTestV2Listener.class)
 public class OrderFlowTest implements ScenarioExecutorProvider {
 
-    @FlowTestV2Executor
-    private ScenarioExecutor executor;
+    @Autowired
+    private ScenarioExecutor springScenarioExecutor;
+
+    @Override
+    public ScenarioExecutor createScenarioExecutor() {
+        return springScenarioExecutor;
+    }
 }
 ```
+
+`@FlowTestV2Executor` is now optional. Keep it only when you explicitly need direct field access to the current executor.
 
 ## Spring Boot
 
@@ -128,21 +138,21 @@ JdbcObservationRegistry jdbcObservationRegistry() {
 }
 ```
 
-If only the physical table is dynamic, pass `TableRouteScope` and skip SQL routing:
+If only the physical table is dynamic, prefer the high-level watch DSL:
 
 ```java
-.observe(o -> o.table("ft_order", TableRouteScope.of("bucket", "a")))
+.watch(w -> w.table("ft_order").dynamicTableBy("bucket", "a"))
 ```
 
 If the table is dynamic and the SQL still needs shard predicates, pass both scopes:
 
 ```java
-.observe(o -> o.shardedTable(
-    "ft_order",
-    TableRouteScope.of("bucket", "a"),
-    RouteScope.of(RouteCondition.eq("tenant_id", 100L))
-))
+.watch(w -> w.table("ft_order")
+    .dynamicTableBy("bucket", "a")
+    .route("tenant_id", 100L))
 ```
+
+`TableRouteScope` is still available as the lower-level escape hatch when you need to prebuild a reusable scope object.
 
 With the default suffix resolver, FlowTest maps:
 - `ft_order` + `bucket = a` -> `ft_order_a`
@@ -202,9 +212,9 @@ If multiple patterns match the same table, startup fails fast when the table is 
 Once routing is configured, the test DSL stays unchanged:
 
 ```java
-.observe(o -> o
+.watch(w -> w
     .fixture(user)
-    .shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+    .table("ft_order").route("tenant_id", 100L))
 ```
 
 The framework resolves `ft_user` and `ft_order` to the correct `DataSource` automatically.
@@ -246,14 +256,14 @@ as the copyable reference. It shows the full wiring:
 2. Make the test class extend `AbstractTestNGSpringContextTests`.
 3. Add `@SpringBootTest` and `@Listeners(FlowTestV2Listener.class)`.
 4. Implement `ScenarioExecutorProvider` and return the Spring-managed `ScenarioExecutor`.
-5. Inject `ScenarioExecutor` into a field annotated with `@FlowTestV2Executor`.
+5. Call `.run()` directly in the scenario after the listener has bound the executor.
 6. Register `JdbcObservationRegistry` in a test configuration. Only special persistence cases still need a custom `FixtureAdapterRegistry`.
-7. Build the scenario with `given -> observe -> when -> then`, then execute it with the injected executor.
+7. Build the scenario with `given -> watch -> when -> verify`, then finish with `.run()`.
 
 The example uses:
 - fixture-backed `ft_user`
 - watch-only sharded `ft_order`
-- TestNG listener-based executor injection
+- TestNG listener-based default executor binding
 - Spring Boot auto-configured `ScenarioExecutor`
 - row-level assertion for the inserted order row
 
@@ -272,7 +282,7 @@ That example shows:
 - `@TableField(exist = false)` on the dynamic bucket property
 - `registerEntity(DynamicOrderEntity.class)` without `@JdbcEntity`
 - FlowTest observing the logical table `ft_mp_order_dynamic`
-- `TableRouteScope` and `RouteScope` used together in the same scenario
+- `dynamicTableBy(...)` and `.route(...)` used together in the same scenario
 - cleanup only affecting the resolved physical table
 
 ### Complete Spring Boot + TestNG + MyBatis-Plus Dynamic Table Multi-DataSource Example
@@ -306,9 +316,10 @@ That example shows:
 Count assertions are still available, but `v2` now supports before/after row assertions:
 
 ```java
-.then(t -> t
-    .insertedRow("ft_order", RowAssertions.columnEquals("status", "CREATED"))
-    .modifiedRow("ft_order", ModifiedRowAssertions.changed("status", "CREATED", "PAID")));
+.verify(ctx -> {
+    assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
+    assertThat(ctx.table("ft_order").modifiedOne().after().getColumn("status")).isEqualTo("PAID");
+});
 ```
 
 Use `.change(resourceName, assertion)` when you need direct access to the full `ResourceChange`.

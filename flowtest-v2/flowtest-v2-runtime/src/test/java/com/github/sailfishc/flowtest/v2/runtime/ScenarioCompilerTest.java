@@ -5,7 +5,6 @@ import com.github.sailfishc.flowtest.v2.assertion.FixtureAssertion;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
-import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
 import com.github.sailfishc.flowtest.v2.spec.RouteScope;
 import org.junit.jupiter.api.Test;
 
@@ -38,10 +37,10 @@ class ScenarioCompilerTest {
             @Override
             public void call() throws Throwable {
                 FlowTestV2.scenario("missing-route")
-                    .observe(new java.util.function.Consumer<ObserveSpec>() {
+                    .watch(new java.util.function.Consumer<WatchSpec>() {
                         @Override
-                        public void accept(ObserveSpec observe) {
-                            observe.shardedTable("t_order", RouteScope.empty());
+                        public void accept(WatchSpec watch) {
+                            watch.table("t_order").route(RouteScope.empty());
                         }
                     })
                     .when(new com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier<String>() {
@@ -63,7 +62,7 @@ class ScenarioCompilerTest {
                 @Override
                 public void accept(WatchSpec watch) {
                     watch.table("t_order")
-                        .tableBy("bucket", "a")
+                        .dynamicTableBy("bucket", "a")
                         .route("tenant_id", 1001L);
                 }
             })
@@ -103,11 +102,10 @@ class ScenarioCompilerTest {
                     }));
                 }
             })
-            .observe(new java.util.function.Consumer<ObserveSpec>() {
+            .watch(new java.util.function.Consumer<WatchSpec>() {
                 @Override
-                public void accept(ObserveSpec observe) {
-                    observe.fixture(user);
-                    observe.shardedTable("t_order", RouteScope.of(RouteCondition.eq("tenant_id", 1001L)));
+                public void accept(WatchSpec watch) {
+                    watch.fixture(user).table("t_order").route("tenant_id", 1001L);
                 }
             })
             .cleanup(CleanupPolicy.DELETE_INSERTED)
@@ -135,6 +133,42 @@ class ScenarioCompilerTest {
         assertThat(compiled.getDefinition().getFixtures()).hasSize(1);
         assertThat(compiled.getDefinition().getObservations()).hasSize(2);
         assertThat(compiled.getDefinition().getCleanupPolicy()).isEqualTo(CleanupPolicy.DELETE_INSERTED);
+    }
+
+    @Test
+    void rejectsFixtureExpectationReferencingUndeclaredHandle() {
+        final FixtureHandle<User> ghost = FixtureHandle.named(User.class, "ghost");
+
+        assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
+            @Override
+            public void call() throws Throwable {
+                FlowTestV2.scenario("undeclared-fixture-expectation")
+                    .watch(new java.util.function.Consumer<WatchSpec>() {
+                        @Override
+                        public void accept(WatchSpec watch) {
+                            watch.table("t_order");
+                        }
+                    })
+                    .when(new com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier<String>() {
+                        @Override
+                        public String get() {
+                            return "ok";
+                        }
+                    })
+                    .then(new java.util.function.Consumer<ThenSpec<String>>() {
+                        @Override
+                        public void accept(ThenSpec<String> then) {
+                            then.fixture(ghost, new FixtureAssertion<User>() {
+                                @Override
+                                public void verify(User value) {
+                                }
+                            });
+                        }
+                    })
+                    .compile();
+            }
+        }).isInstanceOf(ScenarioValidationException.class)
+            .hasMessageContaining("Fixture expectation references undeclared handle");
     }
 
     private static final class User {

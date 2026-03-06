@@ -41,10 +41,10 @@
 
 | 概念 | 它解决的问题 | 典型特征 | 对应 API | 什么时候用 |
 | --- | --- | --- | --- | --- |
-| `act-only` | 测试前是否需要准备数据 | 没有 `given(...)`，数据只在 `when(...)` 中产生或变化 | `observe(...).when(...).then(...)` | 只关心 act 产生的新数据或存量变化 |
-| `混合场景` | 测试前是否需要准备数据 | 有 `given(...)`，同时观察 fixture 和 act 产生的数据 | `given(...).observe(...).when(...).then(...)` | 先有前置数据，再执行 act 并校验变化 |
-| `分库分表` | SQL 如何合法路由 | 快照、diff、cleanup 的 SQL 必须带分片条件 | `shardedTable(...)`、`shardedEntity(...)`、`RouteScope` | 中间件要求 SQL 带 `tenant_id`、`user_id` 等路由字段 |
-| `动态表名` | 运行时实际查哪张物理表 | 逻辑表固定，物理表会变成 `table_a`、`table_b` 之类 | `TableRouteScope`、`@JdbcDynamicTable` | 同一个逻辑表会根据 bucket、月份、类型切到不同物理表 |
+| `act-only` | 测试前是否需要准备数据 | 没有 `given(...)`，数据只在 `when(...)` 中产生或变化 | `watch(...).when(...).verify(...)` | 只关心 act 产生的新数据或存量变化 |
+| `混合场景` | 测试前是否需要准备数据 | 有 `given(...)`，同时观察 fixture 和 act 产生的数据 | `given(...).watch(...).when(...).verify(...)` | 先有前置数据，再执行 act 并校验变化 |
+| `分库分表` | SQL 如何合法路由 | 快照、diff、cleanup 的 SQL 必须带分片条件 | `.route(...)`、`RouteScope` | 中间件要求 SQL 带 `tenant_id`、`user_id` 等路由字段 |
+| `动态表名` | 运行时实际查哪张物理表 | 逻辑表固定，物理表会变成 `table_a`、`table_b` 之类 | `.dynamicTableBy(...)`、`TableRouteScope`、`@JdbcDynamicTable` | 同一个逻辑表会根据 bucket、月份、类型切到不同物理表 |
 | `多数据源` | 这张表属于哪个 `DataSource` | 表和数据源的映射是基础设施配置，不应写在 DSL 里 | `flowtest.v2.datasource.*` | 一条场景会同时观察不同库里的表 |
 
 再用一句话记忆：
@@ -58,12 +58,12 @@
 
 | 场景 | 示例写法 |
 | --- | --- |
-| `act-only + 普通表` | `.observe(o -> o.table("ft_order"))` |
-| `act-only + 分库分表` | `.observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))` |
-| `act-only + 动态表` | `.observe(o -> o.table("ft_order", TableRouteScope.of("bucket", "a")))` |
-| `act-only + 动态表 + 分库分表` | `.observe(o -> o.shardedTable("ft_order", TableRouteScope.of("bucket", "a"), RouteScope.of(RouteCondition.eq("tenant_id", 100L))))` |
-| `混合场景 + 普通表` | `.given(...).observe(o -> o.fixture(user).table("ft_order"))` |
-| `混合场景 + 动态表 + 分库分表` | `.given(...).observe(o -> o.fixture(user).shardedTable("ft_order", TableRouteScope.of("bucket", "a"), RouteScope.of(RouteCondition.eq("tenant_id", 100L))))` |
+| `act-only + 普通表` | `.watch(w -> w.table("ft_order"))` |
+| `act-only + 分库分表` | `.watch(w -> w.table("ft_order").route("tenant_id", 100L))` |
+| `act-only + 动态表` | `.watch(w -> w.table("ft_order").dynamicTableBy("bucket", "a"))` |
+| `act-only + 动态表 + 分库分表` | `.watch(w -> w.table("ft_order").dynamicTableBy("bucket", "a").route("tenant_id", 100L))` |
+| `混合场景 + 普通表` | `.given(...).watch(w -> w.fixture(user).table("ft_order"))` |
+| `混合场景 + 动态表 + 分库分表` | `.given(...).watch(w -> w.fixture(user).table("ft_order").dynamicTableBy("bucket", "a").route("tenant_id", 100L))` |
 
 ## 2. 模块选择
 
@@ -299,8 +299,10 @@ ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
         assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
         assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
     })
-    .execute(executor);
+    .run();
 ```
+
+这里的 `.run()` 依赖测试框架集成在当前线程提前绑定默认 `ScenarioExecutor`。如果你还在手动装配阶段，先使用 `.execute(executor)`。
 
 运行结束后，框架会按 cleanup 策略自动清理。
 
@@ -325,7 +327,7 @@ ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
 3. 标注 `@Listeners(FlowTestV2Listener.class)`
 4. 实现 `ScenarioExecutorProvider`
 5. 返回 Spring 容器里的 `ScenarioExecutor`
-6. 用 `@FlowTestV2Executor` 注入 executor 字段
+6. 在场景里直接调用 `.run()`
 
 ```java
 @SpringBootTest
@@ -336,15 +338,14 @@ public class OrderFlowTest extends AbstractTestNGSpringContextTests
     @Autowired
     private ScenarioExecutor springScenarioExecutor;
 
-    @FlowTestV2Executor
-    private ScenarioExecutor executor;
-
     @Override
     public ScenarioExecutor createScenarioExecutor() {
         return springScenarioExecutor;
     }
 }
 ```
+
+`@FlowTestV2Executor` 现在是可选的。只有在你确实要直接访问当前 `ScenarioExecutor` 字段时再加；常规场景直接 `.run()` 即可。
 
 完整示例：
 
@@ -377,18 +378,21 @@ static final FlowTestV2Extension FLOW = FlowTestV2Extension.builder()
 
 ```java
 FlowTestV2.scenario("act-only")
-    .observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+    .watch(w -> w.table("ft_order").route("tenant_id", 100L))
     .when(() -> orderService.createOrder(100L, 1L, 10L))
-    .then(t -> t.expectNoException().inserted("ft_order", 1))
-    .execute(executor);
+    .verify(ctx -> {
+        ctx.success();
+        assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
+    })
+    .run();
 ```
 
 ### 7.2 fixture-backed + watch-only 混合
 
 ```java
-.observe(o -> o
+.watch(w -> w
     .fixture(user)
-    .shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+    .table("ft_order").route("tenant_id", 100L))
 ```
 
 这里：
@@ -398,13 +402,10 @@ FlowTestV2.scenario("act-only")
 
 ### 7.3 分库分表
 
-如果 SQL 必须带分片条件，就用 `shardedTable(...)` 或 `shardedEntity(...)`：
+如果 SQL 必须带分片条件，就给资源追加 `.route(...)`：
 
 ```java
-.observe(o -> o.shardedTable(
-    "ft_order",
-    RouteScope.of(RouteCondition.eq("tenant_id", 100L))
-))
+.watch(w -> w.table("ft_order").route("tenant_id", 100L))
 ```
 
 `RouteScope` 负责 SQL 路由条件，不负责动态表名。
@@ -443,17 +444,15 @@ public class DynamicOrderEntity {
 只切物理表，不加 SQL route：
 
 ```java
-.observe(o -> o.table("ft_mp_order_dynamic", TableRouteScope.of("bucket", "a")))
+.watch(w -> w.table("ft_mp_order_dynamic").dynamicTableBy("bucket", "a"))
 ```
 
 同时切物理表并带 SQL route：
 
 ```java
-.observe(o -> o.shardedTable(
-    "ft_mp_order_dynamic",
-    TableRouteScope.of("bucket", "a"),
-    RouteScope.of(RouteCondition.eq("tenant_id", 100L))
-))
+.watch(w -> w.table("ft_mp_order_dynamic")
+    .dynamicTableBy("bucket", "a")
+    .route("tenant_id", 100L))
 ```
 
 完整示例：
@@ -496,13 +495,11 @@ flowtest:
 配置完之后，测试里不需要再写数据源名：
 
 ```java
-.observe(o -> o
+.watch(w -> w
     .fixture(user)
-    .shardedTable(
-        "ft_mp_order_dynamic",
-        TableRouteScope.of("bucket", "a"),
-        RouteScope.of(RouteCondition.eq("tenant_id", 100L))
-    ))
+    .table("ft_mp_order_dynamic")
+        .dynamicTableBy("bucket", "a")
+        .route("tenant_id", 100L))
 ```
 
 完整示例：

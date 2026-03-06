@@ -15,7 +15,23 @@ public interface WatchResourceSpec extends WatchSpec {
 
     WatchResourceSpec route(RouteScope routeScope);
 
+    /**
+     * Adds a dynamic-table routing value used to resolve the physical table name.
+     */
+    WatchResourceSpec dynamicTableBy(String key, Object value);
+
+    /**
+     * Adds prebuilt dynamic-table routing values.
+     */
+    WatchResourceSpec dynamicTable(TableRouteScope tableRouteScope);
+
+    /**
+     * Compatibility alias for {@link #dynamicTableBy(String, Object)}.
+     */
     WatchResourceSpec tableBy(String key, Object value);
 
+    /**
+     * Compatibility alias for {@link #dynamicTable(TableRouteScope)}.
+     */
     WatchResourceSpec tableRoute(TableRouteScope tableRouteScope);
 }

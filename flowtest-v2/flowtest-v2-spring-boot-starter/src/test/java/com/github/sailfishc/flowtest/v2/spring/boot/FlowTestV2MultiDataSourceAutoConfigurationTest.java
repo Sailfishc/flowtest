@@ -7,8 +7,6 @@ import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
-import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
-import com.github.sailfishc.flowtest.v2.spec.RouteScope;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -87,9 +85,9 @@ class FlowTestV2MultiDataSourceAutoConfigurationTest {
                         user.setBalance(100L);
                     }
                 })))
-            .observe(o -> o
+            .watch(w -> w
                 .fixture(user)
-                .shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+                .table("ft_order").route("tenant_id", 100L))
             .when(() -> {
                 executeSql(accountDataSource, "update ft_user set balance = 80 where id = 1");
                 executeSql(orderDataSource, "insert into ft_order(id, tenant_id, user_id, status) values (10, 100, 1, 'CREATED')");

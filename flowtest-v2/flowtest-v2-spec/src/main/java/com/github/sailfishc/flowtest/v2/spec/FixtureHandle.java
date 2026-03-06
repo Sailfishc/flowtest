@@ -1,11 +1,14 @@
 package com.github.sailfishc.flowtest.v2.spec;
 
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Stable handle used to refer to a fixture across given, observe, and then phases.
  */
 public final class FixtureHandle<T> {
+
+    private static final AtomicLong ANONYMOUS_COUNTER = new AtomicLong();
 
     private final Class<T> type;
     private final String name;
@@ -20,7 +23,7 @@ public final class FixtureHandle<T> {
     }
 
     public static <T> FixtureHandle<T> anonymous(Class<T> type) {
-        return new FixtureHandle<T>(type, null);
+        return new FixtureHandle<T>(type, type.getSimpleName() + "_" + ANONYMOUS_COUNTER.incrementAndGet());
     }
 
     public Class<T> getType() {

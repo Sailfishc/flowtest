@@ -42,13 +42,14 @@ class FlowTestV2ExtensionAutoFixtureAdapterTest {
                 idTrait(1L),
                 tenantTrait(100L),
                 nameTrait("Alice")))
-            .observe(o -> o.fixture(user))
+            .watch(w -> w.fixture(user))
             .when(() -> "ok")
             .then(t -> t.expectNoException().fixture(user, value -> assertThat(value.getName()).isEqualTo("Alice")))
-            .execute(executor);
+            .run();
 
         assertThat(result.getResult()).isEqualTo("ok");
         assertThat(queryForLong("select count(*) from ft_user")).isEqualTo(0L);
+        assertThat(executor).isNotNull();
     }
 
     private FixtureTrait<TestUser> idTrait(final Long id) {

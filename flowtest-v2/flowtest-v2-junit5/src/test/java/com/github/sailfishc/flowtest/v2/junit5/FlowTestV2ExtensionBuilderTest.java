@@ -35,14 +35,15 @@ class FlowTestV2ExtensionBuilderTest {
     @Test
     void shouldResolveExecutorFromRegisteredExtension(ScenarioExecutor executor) throws Exception {
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("junit5-builder")
-            .observe(o -> o.table("orders"))
+            .watch(w -> w.table("orders"))
             .cleanup(CleanupPolicy.DELETE_INSERTED)
             .when(() -> "ok")
             .then(t -> t.expectNoException().inserted("orders", 1))
-            .execute(executor);
+            .run();
 
         assertThat(result.getResult()).isEqualTo("ok");
         assertThat(result.getDiff().getChange("orders").getInsertedCount()).isEqualTo(1L);
+        assertThat(executor).isNotNull();
     }
 
     private static ObservationSnapshot snapshot(String resourceName, RowSnapshot... rows) {

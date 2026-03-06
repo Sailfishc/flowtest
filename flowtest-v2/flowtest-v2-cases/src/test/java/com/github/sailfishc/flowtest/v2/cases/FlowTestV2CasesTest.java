@@ -12,9 +12,6 @@ import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
-import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
-import com.github.sailfishc.flowtest.v2.spec.RouteScope;
-import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -62,8 +59,8 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<Long> result = FlowTestV2.scenario("act-only-order-create")
-            .observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L)))
-                .shardedTable("ft_order_item", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+            .watch(w -> w.table("ft_order").route("tenant_id", 100L)
+                .table("ft_order_item").route("tenant_id", 100L))
             .when(() -> {
                 executeSql("insert into ft_order(id, tenant_id, user_id, status) values (1, 100, 7, 'CREATED')");
                 executeSql("insert into ft_order_item(id, order_id, tenant_id, sku) values (11, 1, 100, 'SKU-1')");
@@ -96,7 +93,7 @@ class FlowTestV2CasesTest {
                 tenantTrait(100L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .observe(o -> o.fixture(user).shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+            .watch(w -> w.fixture(user).table("ft_order").route("tenant_id", 100L))
             .when(() -> {
                 executeSql("update ft_user set balance = 80 where id = 1");
                 executeSql("insert into ft_order(id, tenant_id, user_id, status) values (2, 100, 1, 'CREATED')");
@@ -123,7 +120,7 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("row-level-order")
-            .observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+            .watch(w -> w.table("ft_order").route("tenant_id", 100L))
             .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
             .when(() -> {
                 executeSql("update ft_order set status = 'PAID' where id = 301");
@@ -154,7 +151,7 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("restore-modified-order")
-            .observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+            .watch(w -> w.table("ft_order").route("tenant_id", 100L))
             .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
             .when(() -> {
                 executeSql("update ft_order set status = 'PAID' where id = 101");
@@ -179,7 +176,7 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("restore-deleted-order")
-            .observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+            .watch(w -> w.table("ft_order").route("tenant_id", 100L))
             .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
             .when(() -> {
                 executeSql("delete from ft_order where id = 201");
@@ -206,11 +203,9 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("dynamic-table-order")
-            .observe(o -> o.shardedTable(
-                "ft_order_dynamic",
-                TableRouteScope.of("bucket", "a"),
-                RouteScope.of(RouteCondition.eq("tenant_id", 100L))
-            ))
+            .watch(w -> w.table("ft_order_dynamic")
+                .dynamicTableBy("bucket", "a")
+                .route("tenant_id", 100L))
             .when(() -> {
                 executeSql("insert into ft_order_dynamic_a(id, tenant_id, status) values (401, 100, 'CREATED')");
                 executeSql("insert into ft_order_dynamic_b(id, tenant_id, status) values (402, 100, 'UNTOUCHED')");

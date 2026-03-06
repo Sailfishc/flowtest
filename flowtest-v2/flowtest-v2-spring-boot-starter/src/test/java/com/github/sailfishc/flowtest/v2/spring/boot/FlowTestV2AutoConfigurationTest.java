@@ -7,8 +7,6 @@ import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
-import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
-import com.github.sailfishc.flowtest.v2.spec.RouteScope;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -51,7 +49,7 @@ class FlowTestV2AutoConfigurationTest {
                 tenantTrait(100L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .observe(o -> o.fixture(user).shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+            .watch(w -> w.fixture(user).table("ft_order").route("tenant_id", 100L))
             .when(() -> {
                 executeSql("update ft_user set balance = 80 where id = 1");
                 executeSql("insert into ft_order(id, tenant_id, user_id, status) values (10, 100, 1, 'CREATED')");

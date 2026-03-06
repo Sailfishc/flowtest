@@ -8,16 +8,10 @@ import com.baomidou.mybatisplus.extension.plugins.MybatisPlusInterceptor;
 import com.baomidou.mybatisplus.extension.plugins.handler.TableNameHandler;
 import com.baomidou.mybatisplus.extension.plugins.inner.DynamicTableNameInnerInterceptor;
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
-import com.github.sailfishc.flowtest.v2.assertion.RowAssertions;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcDynamicTable;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
-import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
-import com.github.sailfishc.flowtest.v2.spec.RouteScope;
-import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
-import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Executor;
 import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Listener;
 import org.apache.ibatis.annotations.Mapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -57,9 +51,6 @@ public class FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest extend
     @Autowired
     private DynamicOrderService dynamicOrderService;
 
-    @FlowTestV2Executor
-    private ScenarioExecutor executor;
-
     @BeforeMethod
     public void setUpSchema() {
         jdbcTemplate.execute("drop table if exists ft_mp_order_dynamic_a");
@@ -72,23 +63,21 @@ public class FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest extend
     public void shouldExecuteScenarioWithMybatisPlusAndDynamicTable() throws Exception {
         jdbcTemplate.update("insert into ft_mp_order_dynamic_b(id, tenant_id, status) values (702, 200, 'HISTORICAL')");
 
-        ScenarioExecutionResult<Long> result = FlowTestV2.scenario("spring-boot-testng-mybatis-plus-dynamic-table")
-            .observe(o -> o.shardedTable(
-                "ft_mp_order_dynamic",
-                TableRouteScope.of("bucket", "a"),
-                RouteScope.of(RouteCondition.eq("tenant_id", 100L))
-            ))
+        FlowTestV2.scenario("spring-boot-testng-mybatis-plus-dynamic-table")
+            .watch(w -> w.table("ft_mp_order_dynamic")
+                .dynamicTableBy("bucket", "a")
+                .route("tenant_id", 100L))
             .when(() -> dynamicOrderService.createOrder("a", 100L, 701L))
-            .then(t -> t.expectNoException()
-                .inserted("ft_mp_order_dynamic", 1)
-                .insertedRow("ft_mp_order_dynamic", RowAssertions.allOf(
-                    RowAssertions.columnEquals("id", 701L),
-                    RowAssertions.columnEquals("tenant_id", 100L),
-                    RowAssertions.columnEquals("status", "CREATED")
-                )))
-            .execute(executor);
+            .verify(ctx -> {
+                ctx.success();
+                assertThat(ctx.result()).isEqualTo(701L);
+                assertThat(ctx.table("ft_mp_order_dynamic").insertedCount()).isEqualTo(1L);
+                assertThat(ctx.table("ft_mp_order_dynamic").insertedOne().getColumn("id")).isEqualTo(701L);
+                assertThat(ctx.table("ft_mp_order_dynamic").insertedOne().getColumn("tenant_id")).isEqualTo(100L);
+                assertThat(ctx.table("ft_mp_order_dynamic").insertedOne().getColumn("status")).isEqualTo("CREATED");
+            })
+            .run();
 
-        assertThat(result.getResult()).isEqualTo(701L);
         assertThat(queryForLong("select count(*) from ft_mp_order_dynamic_a")).isEqualTo(0L);
         assertThat(queryForLong("select count(*) from ft_mp_order_dynamic_b")).isEqualTo(1L);
         assertThat(queryForString("select status from ft_mp_order_dynamic_b where id = 702")).isEqualTo("HISTORICAL");

@@ -40,7 +40,7 @@ class ScenarioExecutorTest {
         ScenarioExecutor executor = new ScenarioExecutor(observationExecutor);
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("act-only")
-            .observe(o -> o.table("orders"))
+            .watch(w -> w.table("orders"))
             .when(() -> "done")
             .then(t -> t.expectNoException().inserted("orders", 1))
             .execute(executor);
@@ -48,6 +48,31 @@ class ScenarioExecutorTest {
         assertThat(result.getResult()).isEqualTo("done");
         assertThat(result.getDiff().getChange("orders").getInsertedCount()).isEqualTo(1L);
         assertThat(observationExecutor.getLastCleanupPolicy()).isEqualTo(CleanupPolicy.DELETE_INSERTED);
+    }
+
+    @Test
+    void shouldRunScenarioThroughThreadBoundExecutor() throws Exception {
+        List<ObservationSnapshot> snapshots = Arrays.asList(
+            snapshot("orders"),
+            snapshot("orders", row(1L, "status", "CREATED"))
+        );
+        ScenarioExecutor executor = new ScenarioExecutor(new RecordingObservationExecutor(snapshots));
+
+        ScenarioExecutors.bind(executor);
+        try {
+            ScenarioExecutionResult<String> result = FlowTestV2.scenario("thread-bound")
+                .watch(w -> w.table("orders"))
+                .when(() -> "done")
+                .verify(ctx -> {
+                    ctx.success();
+                    assertThat(ctx.table("orders").insertedCount()).isEqualTo(1L);
+                })
+                .run();
+
+            assertThat(result.getResult()).isEqualTo("done");
+        } finally {
+            ScenarioExecutors.clear();
+        }
     }
 
     @Test
@@ -62,7 +87,7 @@ class ScenarioExecutorTest {
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("mixed")
             .given(g -> g.persist(user, nameTrait("before")))
-            .observe(o -> o.fixture(user))
+            .watch(w -> w.fixture(user))
             .cleanup(CleanupPolicy.DELETE_FIXTURE)
             .when(() -> "ok")
             .then(t -> t.fixture(user, value -> assertThat(value.getName()).isEqualTo("after")))
@@ -87,7 +112,7 @@ class ScenarioExecutorTest {
         ScenarioExecutor executor = new ScenarioExecutor(observationExecutor);
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("row-level")
-            .observe(o -> o.table("orders"))
+            .watch(w -> w.table("orders"))
             .when(() -> "done")
             .then(t -> t.expectNoException()
                 .insertedRow("orders", RowAssertions.allOf(
@@ -123,7 +148,7 @@ class ScenarioExecutorTest {
 
         ScenarioExecutionResult<Long> result = FlowTestV2.scenario("verify-context")
             .given(g -> g.persist(user, nameTrait("before")))
-            .observe(o -> o.fixture(user).table("orders"))
+            .watch(w -> w.fixture(user).table("orders"))
             .when(() -> 10L)
             .verify(ctx -> {
                 ctx.success();
@@ -150,7 +175,7 @@ class ScenarioExecutorTest {
         ScenarioExecutor executor = new ScenarioExecutor(observationExecutor);
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("verify-failure")
-            .observe(o -> o.table("orders"))
+            .watch(w -> w.table("orders"))
             .<String>when(() -> {
                 throw new IllegalStateException("boom");
             })
@@ -172,13 +197,23 @@ class ScenarioExecutorTest {
         ScenarioExecutor executor = new ScenarioExecutor(observationExecutor);
 
         assertThatThrownBy(() -> FlowTestV2.scenario("failure")
-            .observe(o -> o.table("orders"))
+            .watch(w -> w.table("orders"))
             .when(() -> {
                 throw new IllegalStateException("boom");
             })
             .execute(executor))
             .isInstanceOf(IllegalStateException.class)
             .hasMessage("boom");
+    }
+
+    @Test
+    void shouldRejectRunWithoutCurrentExecutor() {
+        assertThatThrownBy(() -> FlowTestV2.scenario("no-runner")
+            .watch(w -> w.table("orders"))
+            .when(() -> "ok")
+            .run())
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("No active ScenarioExecutor");
     }
 
     private static ObservationSnapshot snapshot(String resourceName, RowSnapshot... rows) {

@@ -164,10 +164,13 @@ public final class ScenarioExecutor {
                                   FixtureExecution fixtureExecution,
                                   ObservationDiff diff) {
         try {
-            if (cleanupPolicy != CleanupPolicy.ROLLBACK) {
-                observationExecutor.cleanup(definition.getObservations(), diff, cleanupPolicy);
-                fixtureExecution.cleanup();
+            if (cleanupPolicy == CleanupPolicy.ROLLBACK) {
+                throw new UnsupportedOperationException(
+                    "CleanupPolicy.ROLLBACK is not yet implemented. "
+                    + "Use DELETE_INSERTED, RESTORE_BEFORE_IMAGE, or manage transactions externally.");
             }
+            observationExecutor.cleanup(definition.getObservations(), diff, cleanupPolicy);
+            fixtureExecution.cleanup();
             return null;
         } catch (Throwable ex) {
             return ex;

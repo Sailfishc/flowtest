@@ -15,6 +15,10 @@ public final class CompiledScenario<R> {
         return definition;
     }
 
+    public ScenarioExecutionResult<R> run() throws Exception {
+        return execute(ScenarioExecutors.current());
+    }
+
     public ScenarioExecutionResult<R> execute(ScenarioExecutor executor) throws Exception {
         return executor.execute(this);
     }

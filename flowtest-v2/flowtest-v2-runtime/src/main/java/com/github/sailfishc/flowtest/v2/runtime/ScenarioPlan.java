@@ -15,5 +15,10 @@ public interface ScenarioPlan<R> {
 
     CompiledScenario<R> compile();
 
+    /**
+     * Runs the scenario with the executor already bound to the current thread by a test integration.
+     */
+    ScenarioExecutionResult<R> run() throws Exception;
+
     ScenarioExecutionResult<R> execute(ScenarioExecutor executor) throws Exception;
 }

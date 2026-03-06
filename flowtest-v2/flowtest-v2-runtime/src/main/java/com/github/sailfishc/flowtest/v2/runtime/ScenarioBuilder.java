@@ -14,8 +14,6 @@ public interface ScenarioBuilder {
 
     ScenarioBuilder watch(Consumer<WatchSpec> watch);
 
-    ScenarioBuilder observe(Consumer<ObserveSpec> observe);
-
     ScenarioBuilder cleanup(CleanupPolicy cleanupPolicy);
 
     <R> ScenarioPlan<R> when(ThrowingSupplier<R> action);

@@ -78,7 +78,8 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(jar tf:*)",
       "Bash(mvn dependency:sources:*)",
-      "Bash(mvn dependency:resolve:*)"
+      "Bash(mvn dependency:resolve:*)",
+      "Bash(mvn test-compile -pl flowtest-v2/flowtest-v2-runtime -am)"
     ]
   }
 }

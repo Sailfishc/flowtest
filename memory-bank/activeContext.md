@@ -36,6 +36,10 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Expanded the user manual with a scenario comparison table and a dedicated Traits best-practices section covering inline traits, domain trait libraries, composition, and `TraitContext` usage for fixture relationships.
 - Added a new context-style runtime verification DSL via `.verify(ctx -> { ... })`, exposing `result`, `failure`, fixture `before/after`, and resource-level diff access in one place.
 - Updated the primary Spring Boot + TestNG example and the user manual to recommend `.verify(ctx -> { ... })` over fragmented `.then(...)` assertions for mixed scenarios.
+- Added a new high-level `.watch(...)` DSL with resource-oriented chaining (`fixture(...)`, `table(...)`, `entity(...)`, `.route(...)`, `.dynamicTableBy(...)`) to reduce overload-heavy `observe(...)` usage.
+- Added thread-bound executor support through `ScenarioExecutors` plus `.run()` on `ScenarioPlan`/`CompiledScenario`, so JUnit 5 and TestNG integrations can execute scenarios without explicit `.execute(executor)` in the common path.
+- Updated JUnit 5 and TestNG integrations to bind the active `ScenarioExecutor` into the current thread before each test and clear it afterward.
+- Updated JUnit 5, TestNG, and Spring Boot example tests to use `.watch(...) + .verify(...) + .run()` as the primary DSL path.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
@@ -52,6 +56,7 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - For MyBatis-Plus entities, `@JdbcEntity` is no longer required in common cases; `@JdbcDynamicTable` still remains the explicit hook for FlowTest physical-table resolution.
 - The recommended documentation reading order is now: `flowtest-v2-user-manual.md` first, then `flowtest-v2-integrations.md` for integration-specific details, then `flowtest-v2-architecture.md` for model rationale.
 - The current recommended user-facing assertion path is context-based verification (`.verify(ctx -> { ... })`); the older declarative `.then(...)` API remains for compatibility and simple count-style checks.
+- The current recommended user-facing declaration path is `.watch(...) + .verify(ctx -> { ... }) + .run()` under test-framework integration; the older `.observe(...) + .then(...)` and explicit `.execute(executor)` path remains as a lower-level compatibility layer.
 
 ## Next Likely Steps
 - Consider transaction-aware `ROLLBACK` support for Spring-managed tests.
@@ -59,4 +64,4 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Decide whether row-level assertion DSL needs stronger field/path matchers beyond simple column equality.
 - Decide whether datasource routing also needs entity-name bindings in addition to table names and glob patterns.
 - Decide whether runtime should auto-derive `TableRouteScope` from fixture-backed dynamic entities so `observe.fixture(handle)` can work without extra table-route declarations.
-- Continue DSL cleanup on the observation side; `verify` is now context-based, but `observe` still has too many overloads and low-level terms (`shardedTable`, explicit scope objects) in the main path.
+- Continue DSL cleanup after `run()`: dynamic-table naming is now softer via `.dynamicTableBy(...)`, but low-level `TableRouteScope` and compatibility aliases are still visible and could be pushed further behind the fluent API.

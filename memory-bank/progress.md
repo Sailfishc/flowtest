@@ -9,10 +9,12 @@
 - Runtime executes expectations for outcome, fixture state, and change counts.
 - Runtime now supports row-level inserted/deleted/modified assertions and custom full-diff assertions.
 - Runtime now also supports context-style verification through `.verify(ctx -> { ... })`, with access to action result/failure, fixture before/after state, and resource diff collections.
+- Runtime now also supports high-level watch declarations through `.watch(...)`, with fluent resource chaining for `fixture`, `table`, `entity`, `route`, and dynamic-table routing via `.dynamicTableBy(...)`.
+- Runtime now supports thread-bound execution through `ScenarioExecutors` and `.run()`, so integrated tests can execute scenarios without passing `ScenarioExecutor` explicitly.
 - `@JdbcEntity`, `@JdbcColumn`, and `@JdbcIgnore` can now define entity mapping by annotation, with `JdbcObservationRegistry.registerEntity(Class<?>)` loading that metadata.
-- JUnit 5 integration resolves `ScenarioExecutor` via extension builder or provider interface.
+- JUnit 5 integration resolves `ScenarioExecutor` via extension builder or provider interface and now binds it to the current thread for `.run()`.
 - JUnit 5 builder now auto-generates simple fixture adapters from registered entity metadata, so fixture scenarios do not require handwritten JDBC adapters in common cases.
-- TestNG integration injects `ScenarioExecutor` via listener and annotated fields.
+- TestNG integration injects `ScenarioExecutor` via listener and annotated fields, and now also binds it to the current thread for `.run()`.
 - TestNG module now contains a complete Spring Boot + TestNG example that runs under the TestNG provider and demonstrates starter-based wiring end to end.
 - Spring Boot starter auto-configures JDBC registries, executors, and `ScenarioExecutor`.
 - Spring Boot starter now auto-generates fixture adapters for registered entities and supports property-level override/ignore metadata.
@@ -31,6 +33,7 @@
 - Docs now include both a dedicated `flowtest-v2` integrations guide and a zero-to-one user manual, with the integrations guide linking back to the manual as the primary entry point.
 - The user manual now also documents scenario classification (`act-only`, mixed, sharded, dynamic-table, multi-datasource) and recommended Traits organization patterns.
 - The primary user-facing example and manual now recommend `.verify(ctx -> { ... })` for mixed scenarios instead of stacking `fixture(...)`, `modified(...)`, `inserted(...)`, and external result assertions.
+- The primary user-facing example and manual now recommend `.watch(...) + .verify(ctx -> { ... }) + .run()` instead of `observe(...) + fragmented then(...) + .execute(executor)`.
 
 ## Validation
 - Main `v2` command: `mvn -f flowtest-v2/pom.xml test`
@@ -41,7 +44,7 @@
 - `CUSTOM_COMPENSATOR` is not implemented.
 - There is no dedicated Spring Test/TestNG transaction bridge yet for rollback-style cleanup.
 - There is no transaction-aware `ScenarioExecutor` wrapper yet for `CleanupPolicy.ROLLBACK`.
-- Observation DSL still needs simplification; resource declaration remains overload-heavy even after verification DSL was improved.
+- The remaining DSL simplification work is mostly around further hiding low-level route/table-route objects; explicit `.execute(executor)` is no longer the recommended main path.
 
 ## Known Constraints
 - Simple JDBC fixtures can now use convention-based adapter generation, but special persistence behavior still requires a custom adapter.
