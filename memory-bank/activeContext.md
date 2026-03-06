@@ -24,6 +24,9 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Added `MultiDataSourceJdbcObservationExecutor` plus multi-datasource routing in `JdbcFixtureExecutor`.
 - Added Spring Boot property binding for `flowtest.v2.datasource.default-name` and `flowtest.v2.datasource.bindings[*]`.
 - Added Spring Boot starter and TestNG examples for multi-datasource scenarios driven by configuration properties.
+- Added dynamic table name support. Logical tables can now resolve to physical tables like `ft_order_a` / `ft_order_b` from route or entity field values.
+- Added `@JdbcDynamicTable`, `DynamicTableNameResolver`, and registry builder methods such as `.table(...).dynamicByColumn(...)`.
+- Added dynamic-table-aware fixture adapter generation and multi-datasource routing based on the resolved physical table name.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
@@ -34,6 +37,8 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - `RESTORE_BEFORE_IMAGE` cleanup runs route-aware SQL and is now the recommended policy for watch-only scenarios that mutate existing rows.
 - Datasource selection is now an infrastructure concern, configured once by table name/pattern, not a per-scenario DSL concern.
 - Route scope and datasource routing stay separate: datasource is resolved by table binding first, then route conditions are applied to SQL.
+- Dynamic table resolution is a table-metadata concern: the scenario still uses the logical table name, while runtime resolves the physical table from route or entity values.
+- Dynamic fixture persistence/reload/delete is supported, but fixture-backed observation on dynamic tables should use explicit route-based observation instead of bare `observe.fixture(handle)`.
 
 ## Next Likely Steps
 - Consider transaction-aware `ROLLBACK` support for Spring-managed tests.

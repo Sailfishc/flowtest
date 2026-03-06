@@ -37,6 +37,10 @@ public final class TableIdentity {
         return keyColumns;
     }
 
+    public TableIdentity withTableName(String resolvedTableName) {
+        return new TableIdentity(resolvedTableName, keyColumns);
+    }
+
     private static String requireText(String text, String message) {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException(message);

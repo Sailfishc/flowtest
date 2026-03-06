@@ -82,6 +82,48 @@ JdbcObservationRegistry jdbcObservationRegistry() {
 
 Keep a custom `FixtureEntityAdapter` only for special persistence logic such as multi-table inserts, generated keys, or non-standard JDBC types.
 
+### Dynamic Table Names
+
+When the logical table name is stable but the physical table changes by routing field, register the logical table once and let FlowTest resolve the physical suffix at runtime.
+
+Entity-based registration can use annotations:
+
+```java
+@JdbcEntity(table = "ft_order", keyColumns = "id")
+@JdbcDynamicTable(column = "bucket")
+public class OrderEntity {
+}
+```
+
+Table-only observation can use the registry builder:
+
+```java
+@Bean
+JdbcObservationRegistry jdbcObservationRegistry() {
+    return new JdbcObservationRegistry()
+        .table("ft_order", "id")
+        .dynamicByColumn("bucket")
+        .register();
+}
+```
+
+Then the scenario still observes the logical table name:
+
+```java
+.observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("bucket", "a"))))
+```
+
+With the default resolver, FlowTest maps:
+- `ft_order` + `bucket = a` -> `ft_order_a`
+- `ft_order` + `bucket = b` -> `ft_order_b`
+
+If you need a different naming rule, use `.dynamicByColumn("bucket", customResolver)`.
+
+Current constraint:
+- dynamic table observation must have an explicit route scope
+- fixture persistence/reload/delete supports dynamic table resolution
+- fixture-backed observation should use `shardedEntity(...)` or `table(..., route)` rather than `fixture(handle)` when the entity itself is stored in a dynamic table
+
 ### Multi-DataSource Routing
 
 In Spring Boot, datasource routing should live in configuration, not in the scenario DSL. Bind tables or glob patterns to datasource bean names once:

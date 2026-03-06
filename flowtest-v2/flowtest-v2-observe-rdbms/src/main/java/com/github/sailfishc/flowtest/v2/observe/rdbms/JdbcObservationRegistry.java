@@ -1,6 +1,8 @@
 package com.github.sailfishc.flowtest.v2.observe.rdbms;
 
+import com.github.sailfishc.flowtest.v2.spec.ObservationMode;
 import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
+import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
 
 import java.beans.BeanInfo;
 import java.beans.IntrospectionException;
@@ -8,9 +10,11 @@ import java.beans.Introspector;
 import java.beans.PropertyDescriptor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -22,15 +26,31 @@ public final class JdbcObservationRegistry {
     private final Map<String, JdbcObservedResource> resourcesByName = new LinkedHashMap<String, JdbcObservedResource>();
     private final Map<Class<?>, JdbcObservedResource> resourcesByType = new LinkedHashMap<Class<?>, JdbcObservedResource>();
     private final Map<Class<?>, JdbcEntityRegistration> entityRegistrations = new LinkedHashMap<Class<?>, JdbcEntityRegistration>();
+    private final List<JdbcIgnorePropertyResolver> ignorePropertyResolvers =
+        new ArrayList<JdbcIgnorePropertyResolver>(JdbcIgnorePropertyResolvers.defaults());
 
-    public JdbcObservationRegistry registerTable(String tableName, String... keyColumns) {
-        resourcesByName.put(tableName, new JdbcObservedResource(tableName, TableIdentity.of(tableName, keyColumns)));
+    public JdbcObservationRegistry addIgnorePropertyResolver(JdbcIgnorePropertyResolver resolver) {
+        if (resolver == null) {
+            throw new IllegalArgumentException("resolver must not be null");
+        }
+        ignorePropertyResolvers.add(resolver);
         return this;
     }
 
+    public JdbcObservationRegistry registerTable(String tableName, String... keyColumns) {
+        return table(tableName, keyColumns).register();
+    }
+
     public JdbcObservationRegistry registerNamedTable(String resourceName, String tableName, String... keyColumns) {
-        resourcesByName.put(resourceName, new JdbcObservedResource(resourceName, TableIdentity.of(tableName, keyColumns)));
-        return this;
+        return namedTable(resourceName, tableName, keyColumns).register();
+    }
+
+    public TableRegistrationBuilder table(String tableName, String... keyColumns) {
+        return new TableRegistrationBuilder(this, tableName, tableName, keyColumns);
+    }
+
+    public TableRegistrationBuilder namedTable(String resourceName, String tableName, String... keyColumns) {
+        return new TableRegistrationBuilder(this, resourceName, tableName, keyColumns);
     }
 
     public JdbcObservationRegistry registerEntity(Class<?> entityType) {
@@ -44,7 +64,8 @@ public final class JdbcObservationRegistry {
             resolveResourceName(entityType),
             TableIdentity.of(tableName, keyColumns),
             detectPropertyColumns(entityType),
-            detectIgnoredProperties(entityType)
+            detectIgnoredProperties(entityType),
+            dynamicTableRuleOf(entityType)
         ));
         return this;
     }
@@ -58,7 +79,8 @@ public final class JdbcObservationRegistry {
             registration.getIdentity().getTableName(),
             registration.getIdentity().getKeyColumns().toArray(new String[registration.getIdentity().getKeyColumns().size()]),
             registration.getPropertyColumns(),
-            registration.getIgnoredProperties()
+            registration.getIgnoredProperties(),
+            registration.getDynamicTableRule()
         );
     }
 
@@ -70,7 +92,8 @@ public final class JdbcObservationRegistry {
             tableName,
             keyColumns,
             detectPropertyColumns(entityType),
-            detectIgnoredProperties(entityType)
+            detectIgnoredProperties(entityType),
+            dynamicTableRuleOf(entityType)
         );
     }
 
@@ -79,10 +102,18 @@ public final class JdbcObservationRegistry {
     }
 
     private void registerEntity(JdbcEntityRegistration registration) {
-        JdbcObservedResource resource = new JdbcObservedResource(registration.getResourceName(), registration.getIdentity());
+        JdbcObservedResource resource = new JdbcObservedResource(
+            registration.getResourceName(),
+            registration.getIdentity(),
+            registration.getDynamicTableRule()
+        );
         resourcesByType.put(registration.getEntityType(), resource);
         resourcesByName.put(registration.getResourceName(), resource);
         entityRegistrations.put(registration.getEntityType(), registration);
+    }
+
+    private void registerTable(JdbcObservedResource resource) {
+        resourcesByName.put(resource.getResourceName(), resource);
     }
 
     private JdbcEntityRegistration annotatedRegistration(Class<?> entityType) {
@@ -95,8 +126,23 @@ public final class JdbcObservationRegistry {
             hasText(jdbcEntity.resourceName()) ? jdbcEntity.resourceName().trim() : entityType.getName(),
             TableIdentity.of(jdbcEntity.table(), jdbcEntity.keyColumns()),
             detectPropertyColumns(entityType),
-            detectIgnoredProperties(entityType)
+            detectIgnoredProperties(entityType),
+            dynamicTableRuleOf(entityType)
         );
+    }
+
+    private DynamicTableRule dynamicTableRuleOf(Class<?> entityType) {
+        JdbcDynamicTable dynamicTable = entityType.getAnnotation(JdbcDynamicTable.class);
+        if (dynamicTable == null) {
+            return null;
+        }
+        String propertyName = hasText(dynamicTable.property()) ? dynamicTable.property().trim()
+            : hasText(dynamicTable.column()) ? dynamicTable.column().trim() : null;
+        if (!hasText(propertyName)) {
+            throw new IllegalArgumentException("@JdbcDynamicTable on " + entityType.getName() + " requires property()");
+        }
+        String tableRouteKey = hasText(dynamicTable.key()) ? dynamicTable.key().trim() : propertyName;
+        return DynamicTableRule.forProperty(propertyName, tableRouteKey, DynamicTableNameResolvers.suffix(dynamicTable.separator()));
     }
 
     private String resolveResourceName(Class<?> entityType) {
@@ -121,11 +167,21 @@ public final class JdbcObservationRegistry {
     private Set<String> detectIgnoredProperties(Class<?> entityType) {
         Set<String> ignoredProperties = new LinkedHashSet<String>();
         for (PropertyDescriptor property : beanProperties(entityType).values()) {
-            if (isIgnored(entityType, property)) {
+            JdbcPropertyAccess access = new JdbcPropertyAccess(entityType, property, findField(entityType, property.getName()));
+            if (isIgnored(access)) {
                 ignoredProperties.add(property.getName());
             }
         }
         return ignoredProperties;
+    }
+
+    private boolean isIgnored(JdbcPropertyAccess propertyAccess) {
+        for (JdbcIgnorePropertyResolver resolver : ignorePropertyResolvers) {
+            if (resolver.isIgnored(propertyAccess)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Map<String, PropertyDescriptor> beanProperties(Class<?> entityType) {
@@ -156,15 +212,6 @@ public final class JdbcObservationRegistry {
         return column == null ? null : requireText(column.value(), "column value must not be blank");
     }
 
-    private boolean isIgnored(Class<?> entityType, PropertyDescriptor property) {
-        Field field = findField(entityType, property.getName());
-        if (field != null && field.isAnnotationPresent(JdbcIgnore.class)) {
-            return true;
-        }
-        return isAnnotationPresent(property.getReadMethod(), JdbcIgnore.class)
-            || isAnnotationPresent(property.getWriteMethod(), JdbcIgnore.class);
-    }
-
     private Field findField(Class<?> type, String propertyName) {
         Class<?> current = type;
         while (current != null && current != Object.class) {
@@ -186,11 +233,27 @@ public final class JdbcObservationRegistry {
         return method.getAnnotation(annotationType);
     }
 
-    private boolean isAnnotationPresent(Method method, Class<? extends java.lang.annotation.Annotation> annotationType) {
-        return method != null && method.isAnnotationPresent(annotationType);
+    JdbcObservedResource resolve(ObservationSpec observation) {
+        JdbcObservedResource resource = lookup(observation);
+        if (!resource.isDynamicTable()) {
+            return resource;
+        }
+
+        String physicalTableName;
+        TableRouteScope tableRouteScope = observation.getTableRouteScope();
+        if (tableRouteScope != null && !tableRouteScope.isEmpty()) {
+            physicalTableName = resource.getDynamicTableRule().resolveTableName(resource.getIdentity().getTableName(), tableRouteScope);
+        } else if (observation.getObservationMode() == ObservationMode.FIXTURE_BACKED) {
+            throw new IllegalArgumentException("Dynamic table observation for fixture-backed resource "
+                + observation.getResourceName()
+                + " requires explicit table route; use observe.shardedEntity(..., tableRoute, route) or observe.table(..., tableRoute, route)");
+        } else {
+            physicalTableName = resource.getDynamicTableRule().resolveTableName(resource.getIdentity().getTableName(), observation.getRouteScope());
+        }
+        return resource.withIdentity(resource.getIdentity().withTableName(physicalTableName));
     }
 
-    JdbcObservedResource resolve(ObservationSpec observation) {
+    private JdbcObservedResource lookup(ObservationSpec observation) {
         if (observation.getResourceType() != null) {
             JdbcObservedResource byType = resourcesByType.get(observation.getResourceType());
             if (byType != null) {
@@ -208,10 +271,12 @@ public final class JdbcObservationRegistry {
 
         private final String resourceName;
         private final TableIdentity identity;
+        private final DynamicTableRule dynamicTableRule;
 
-        private JdbcObservedResource(String resourceName, TableIdentity identity) {
+        private JdbcObservedResource(String resourceName, TableIdentity identity, DynamicTableRule dynamicTableRule) {
             this.resourceName = resourceName;
             this.identity = identity;
+            this.dynamicTableRule = dynamicTableRule;
         }
 
         public String getResourceName() {
@@ -220,6 +285,63 @@ public final class JdbcObservationRegistry {
 
         public TableIdentity getIdentity() {
             return identity;
+        }
+
+        public boolean isDynamicTable() {
+            return dynamicTableRule != null;
+        }
+
+        public DynamicTableRule getDynamicTableRule() {
+            return dynamicTableRule;
+        }
+
+        public JdbcObservedResource withIdentity(TableIdentity resolvedIdentity) {
+            return new JdbcObservedResource(resourceName, resolvedIdentity, dynamicTableRule);
+        }
+    }
+
+    public static final class TableRegistrationBuilder {
+
+        private final JdbcObservationRegistry registry;
+        private final String resourceName;
+        private final String tableName;
+        private final String[] keyColumns;
+        private DynamicTableRule dynamicTableRule;
+
+        private TableRegistrationBuilder(JdbcObservationRegistry registry,
+                                         String resourceName,
+                                         String tableName,
+                                         String[] keyColumns) {
+            this.registry = registry;
+            this.resourceName = requireText(resourceName, "resourceName must not be blank");
+            this.tableName = requireText(tableName, "tableName must not be blank");
+            this.keyColumns = keyColumns;
+        }
+
+        public TableRegistrationBuilder dynamicByKey(String tableRouteKey) {
+            return dynamicByKey(tableRouteKey, DynamicTableNameResolvers.suffix());
+        }
+
+        public TableRegistrationBuilder dynamicByKey(String tableRouteKey, DynamicTableNameResolver resolver) {
+            this.dynamicTableRule = DynamicTableRule.forRouteKey(tableRouteKey, resolver);
+            return this;
+        }
+
+        public TableRegistrationBuilder dynamicByColumn(String columnName) {
+            return dynamicByKey(columnName);
+        }
+
+        public TableRegistrationBuilder dynamicByColumn(String columnName, DynamicTableNameResolver resolver) {
+            return dynamicByKey(columnName, resolver);
+        }
+
+        public JdbcObservationRegistry register() {
+            registry.registerTable(new JdbcObservedResource(
+                resourceName,
+                TableIdentity.of(tableName, keyColumns),
+                dynamicTableRule
+            ));
+            return registry;
         }
     }
 
@@ -232,6 +354,7 @@ public final class JdbcObservationRegistry {
         private final String[] keyColumns;
         private final Map<String, String> propertyColumns = new LinkedHashMap<String, String>();
         private final Set<String> ignoredProperties = new LinkedHashSet<String>();
+        private DynamicTableRule dynamicTableRule;
 
         private EntityRegistrationBuilder(JdbcObservationRegistry registry,
                                           Class<T> entityType,
@@ -239,7 +362,8 @@ public final class JdbcObservationRegistry {
                                           String tableName,
                                           String[] keyColumns,
                                           Map<String, String> propertyColumns,
-                                          Set<String> ignoredProperties) {
+                                          Set<String> ignoredProperties,
+                                          DynamicTableRule dynamicTableRule) {
             this.registry = registry;
             this.entityType = entityType;
             this.resourceName = resourceName;
@@ -247,6 +371,7 @@ public final class JdbcObservationRegistry {
             this.keyColumns = keyColumns;
             this.propertyColumns.putAll(propertyColumns);
             this.ignoredProperties.addAll(ignoredProperties);
+            this.dynamicTableRule = dynamicTableRule;
         }
 
         public EntityRegistrationBuilder<T> column(String propertyName, String columnName) {
@@ -259,13 +384,37 @@ public final class JdbcObservationRegistry {
             return this;
         }
 
+        public EntityRegistrationBuilder<T> dynamicByProperty(String propertyName) {
+            return dynamicByProperty(propertyName, propertyName, DynamicTableNameResolvers.suffix());
+        }
+
+        public EntityRegistrationBuilder<T> dynamicByProperty(String propertyName, DynamicTableNameResolver resolver) {
+            return dynamicByProperty(propertyName, propertyName, resolver);
+        }
+
+        public EntityRegistrationBuilder<T> dynamicByProperty(String propertyName,
+                                                              String tableRouteKey,
+                                                              DynamicTableNameResolver resolver) {
+            this.dynamicTableRule = DynamicTableRule.forProperty(propertyName, tableRouteKey, resolver);
+            return this;
+        }
+
+        public EntityRegistrationBuilder<T> dynamicByColumn(String columnName) {
+            return dynamicByProperty(columnName);
+        }
+
+        public EntityRegistrationBuilder<T> dynamicByColumn(String columnName, DynamicTableNameResolver resolver) {
+            return dynamicByProperty(columnName, resolver);
+        }
+
         public JdbcObservationRegistry register() {
             registry.registerEntity(new JdbcEntityRegistration(
                 entityType,
                 resourceName,
                 TableIdentity.of(tableName, keyColumns),
                 propertyColumns,
-                ignoredProperties
+                ignoredProperties,
+                dynamicTableRule
             ));
             return registry;
         }

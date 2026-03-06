@@ -21,13 +21,7 @@ public final class JdbcFixtureAdapters {
             if (effective.hasAdapter(registration.getEntityType())) {
                 continue;
             }
-            effective.register(GenericJdbcFixtureEntityAdapter.of(
-                registration.getEntityType(),
-                registration.getIdentity().getTableName(),
-                registration.getIdentity().getKeyColumns(),
-                registration.getPropertyColumns(),
-                registration.getIgnoredProperties()
-            ));
+            effective.register(GenericJdbcFixtureEntityAdapter.of(registration));
         }
         return effective;
     }

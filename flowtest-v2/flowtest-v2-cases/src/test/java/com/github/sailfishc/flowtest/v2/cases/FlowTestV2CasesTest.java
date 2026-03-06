@@ -14,6 +14,7 @@ import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
 import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
 import com.github.sailfishc.flowtest.v2.spec.RouteScope;
+import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,10 +40,14 @@ class FlowTestV2CasesTest {
 
         executeSql("drop table if exists ft_order_item");
         executeSql("drop table if exists ft_order");
+        executeSql("drop table if exists ft_order_dynamic_a");
+        executeSql("drop table if exists ft_order_dynamic_b");
         executeSql("drop table if exists ft_user");
         executeSql("create table ft_user (id bigint primary key, tenant_id bigint, name varchar(64), balance bigint)");
         executeSql("create table ft_order (id bigint primary key, tenant_id bigint, user_id bigint, status varchar(32))");
         executeSql("create table ft_order_item (id bigint primary key, order_id bigint, tenant_id bigint, sku varchar(32))");
+        executeSql("create table ft_order_dynamic_a (id bigint primary key, tenant_id bigint, status varchar(32))");
+        executeSql("create table ft_order_dynamic_b (id bigint primary key, tenant_id bigint, status varchar(32))");
     }
 
     @Test
@@ -186,6 +191,37 @@ class FlowTestV2CasesTest {
         assertThat(result.getResult()).isEqualTo("deleted");
         assertThat(queryForString("select status from ft_order where id = 201")).isEqualTo("CREATED");
         assertThat(queryForString("select status from ft_order where id = 202")).isEqualTo("HISTORICAL");
+    }
+
+    @Test
+    void shouldObserveAndCleanupAgainstResolvedDynamicTableName() throws Exception {
+        executeSql("insert into ft_order_dynamic_b(id, tenant_id, status) values (501, 200, 'HISTORICAL')");
+
+        ScenarioExecutor executor = new ScenarioExecutor(new JdbcObservationExecutor(
+            dataSource,
+            new JdbcObservationRegistry()
+                .table("ft_order_dynamic", "id")
+                .dynamicByKey("bucket")
+                .register()
+        ));
+
+        ScenarioExecutionResult<String> result = FlowTestV2.scenario("dynamic-table-order")
+            .observe(o -> o.shardedTable(
+                "ft_order_dynamic",
+                TableRouteScope.of("bucket", "a"),
+                RouteScope.of(RouteCondition.eq("tenant_id", 100L))
+            ))
+            .when(() -> {
+                executeSql("insert into ft_order_dynamic_a(id, tenant_id, status) values (401, 100, 'CREATED')");
+                executeSql("insert into ft_order_dynamic_b(id, tenant_id, status) values (402, 100, 'UNTOUCHED')");
+                return "ok";
+            })
+            .then(t -> t.expectNoException().inserted("ft_order_dynamic", 1))
+            .execute(executor);
+
+        assertThat(result.getResult()).isEqualTo("ok");
+        assertThat(queryForLong("select count(*) from ft_order_dynamic_a")).isEqualTo(0L);
+        assertThat(queryForLong("select count(*) from ft_order_dynamic_b")).isEqualTo(2L);
     }
 
     private FixtureTrait<TestUser> idTrait(final Long id) {

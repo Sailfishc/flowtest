@@ -1,5 +1,7 @@
 package com.github.sailfishc.flowtest.v2.fixture.jdbc;
 
+import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntityRegistration;
+
 import java.beans.BeanInfo;
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
@@ -25,16 +27,29 @@ public final class GenericJdbcFixtureEntityAdapter<T> implements FixtureEntityAd
 
     private final Class<T> entityType;
     private final String tableName;
+    private final JdbcEntityRegistration registration;
     private final List<ColumnBinding> insertBindings;
     private final List<ColumnBinding> selectBindings;
     private final List<ColumnBinding> keyBindings;
+
+    @SuppressWarnings("unchecked")
+    public static <T> GenericJdbcFixtureEntityAdapter<T> of(JdbcEntityRegistration registration) {
+        return new GenericJdbcFixtureEntityAdapter<T>(
+            (Class<T>) registration.getEntityType(),
+            registration.getIdentity().getTableName(),
+            registration.getIdentity().getKeyColumns(),
+            registration.getPropertyColumns(),
+            registration.getIgnoredProperties(),
+            registration
+        );
+    }
 
     public static <T> GenericJdbcFixtureEntityAdapter<T> of(Class<T> entityType,
                                                             String tableName,
                                                             Collection<String> keyColumns,
                                                             Map<String, String> propertyColumns,
                                                             Set<String> ignoredProperties) {
-        return new GenericJdbcFixtureEntityAdapter<T>(entityType, tableName, keyColumns, propertyColumns, ignoredProperties);
+        return new GenericJdbcFixtureEntityAdapter<T>(entityType, tableName, keyColumns, propertyColumns, ignoredProperties, null);
     }
 
     public GenericJdbcFixtureEntityAdapter(Class<T> entityType,
@@ -42,8 +57,18 @@ public final class GenericJdbcFixtureEntityAdapter<T> implements FixtureEntityAd
                                            Collection<String> keyColumns,
                                            Map<String, String> propertyColumns,
                                            Set<String> ignoredProperties) {
+        this(entityType, tableName, keyColumns, propertyColumns, ignoredProperties, null);
+    }
+
+    private GenericJdbcFixtureEntityAdapter(Class<T> entityType,
+                                            String tableName,
+                                            Collection<String> keyColumns,
+                                            Map<String, String> propertyColumns,
+                                            Set<String> ignoredProperties,
+                                            JdbcEntityRegistration registration) {
         this.entityType = entityType;
         this.tableName = tableName;
+        this.registration = registration;
 
         Map<String, PropertyDescriptor> propertiesByName = introspect(entityType);
         Map<String, PropertyDescriptor> propertiesByColumn = new LinkedHashMap<String, PropertyDescriptor>();
@@ -73,7 +98,7 @@ public final class GenericJdbcFixtureEntityAdapter<T> implements FixtureEntityAd
 
     @Override
     public void insert(Connection connection, T entity) throws Exception {
-        PreparedStatement statement = connection.prepareStatement(buildInsertSql());
+        PreparedStatement statement = connection.prepareStatement(buildInsertSql(entity));
         try {
             bindColumns(statement, entity, insertBindings);
             statement.executeUpdate();
@@ -84,7 +109,7 @@ public final class GenericJdbcFixtureEntityAdapter<T> implements FixtureEntityAd
 
     @Override
     public T reload(Connection connection, T entity) throws Exception {
-        PreparedStatement statement = connection.prepareStatement(buildReloadSql());
+        PreparedStatement statement = connection.prepareStatement(buildReloadSql(entity));
         try {
             bindColumns(statement, entity, keyBindings);
             ResultSet resultSet = statement.executeQuery();
@@ -97,6 +122,7 @@ public final class GenericJdbcFixtureEntityAdapter<T> implements FixtureEntityAd
                     Object value = resultSet.getObject(binding.columnName);
                     writeValue(reloaded, binding.descriptor, value);
                 }
+                copyDynamicTableProperty(entity, reloaded);
                 return reloaded;
             } finally {
                 resultSet.close();
@@ -108,7 +134,7 @@ public final class GenericJdbcFixtureEntityAdapter<T> implements FixtureEntityAd
 
     @Override
     public void delete(Connection connection, T entity) throws Exception {
-        PreparedStatement statement = connection.prepareStatement(buildDeleteSql());
+        PreparedStatement statement = connection.prepareStatement(buildDeleteSql(entity));
         try {
             bindColumns(statement, entity, keyBindings);
             statement.executeUpdate();
@@ -141,9 +167,9 @@ public final class GenericJdbcFixtureEntityAdapter<T> implements FixtureEntityAd
         return constructor.newInstance();
     }
 
-    private String buildInsertSql() {
+    private String buildInsertSql(T entity) {
         StringBuilder sql = new StringBuilder();
-        sql.append("insert into ").append(tableName).append('(');
+        sql.append("insert into ").append(resolveTableName(entity)).append('(');
         appendColumnNames(sql, insertBindings);
         sql.append(") values (");
         appendPlaceholders(sql, insertBindings.size());
@@ -151,20 +177,42 @@ public final class GenericJdbcFixtureEntityAdapter<T> implements FixtureEntityAd
         return sql.toString();
     }
 
-    private String buildReloadSql() {
+    private String buildReloadSql(T entity) {
         StringBuilder sql = new StringBuilder();
         sql.append("select ");
         appendColumnNames(sql, selectBindings);
-        sql.append(" from ").append(tableName).append(" where ");
+        sql.append(" from ").append(resolveTableName(entity)).append(" where ");
         appendPredicates(sql, keyBindings);
         return sql.toString();
     }
 
-    private String buildDeleteSql() {
+    private String buildDeleteSql(T entity) {
         StringBuilder sql = new StringBuilder();
-        sql.append("delete from ").append(tableName).append(" where ");
+        sql.append("delete from ").append(resolveTableName(entity)).append(" where ");
         appendPredicates(sql, keyBindings);
         return sql.toString();
+    }
+
+    private String resolveTableName(T entity) {
+        if (registration == null) {
+            return tableName;
+        }
+        return registration.resolveTableName(entity);
+    }
+
+    private void copyDynamicTableProperty(T source, T target) throws Exception {
+        if (registration == null || !registration.isDynamicTable()) {
+            return;
+        }
+        String propertyName = registration.getDynamicTablePropertyName();
+        if (propertyName == null) {
+            return;
+        }
+        PropertyDescriptor descriptor = introspect(entityType).get(propertyName);
+        if (descriptor == null) {
+            return;
+        }
+        writeValue(target, descriptor, readValue(source, descriptor));
     }
 
     private void appendColumnNames(StringBuilder builder, List<ColumnBinding> bindings) {

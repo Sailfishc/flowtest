@@ -15,6 +15,7 @@ import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
 import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
 import com.github.sailfishc.flowtest.v2.spec.RouteScope;
+import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
 import com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier;
 
 import java.util.ArrayList;
@@ -102,37 +103,73 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
 
         @Override
         public ObserveSpec table(String tableName) {
-            observations.add(ObservationSpec.table(tableName, RouteScope.empty(), false));
+            observations.add(ObservationSpec.table(tableName, TableRouteScope.empty(), RouteScope.empty(), false));
             return this;
         }
 
         @Override
         public ObserveSpec table(String tableName, RouteScope routeScope) {
-            observations.add(ObservationSpec.table(tableName, routeScope, false));
+            observations.add(ObservationSpec.table(tableName, TableRouteScope.empty(), routeScope, false));
+            return this;
+        }
+
+        @Override
+        public ObserveSpec table(String tableName, TableRouteScope tableRouteScope) {
+            observations.add(ObservationSpec.table(tableName, tableRouteScope, RouteScope.empty(), false));
+            return this;
+        }
+
+        @Override
+        public ObserveSpec table(String tableName, TableRouteScope tableRouteScope, RouteScope routeScope) {
+            observations.add(ObservationSpec.table(tableName, tableRouteScope, routeScope, false));
             return this;
         }
 
         @Override
         public ObserveSpec shardedTable(String tableName, RouteScope routeScope) {
-            observations.add(ObservationSpec.table(tableName, routeScope, true));
+            observations.add(ObservationSpec.table(tableName, TableRouteScope.empty(), routeScope, true));
+            return this;
+        }
+
+        @Override
+        public ObserveSpec shardedTable(String tableName, TableRouteScope tableRouteScope, RouteScope routeScope) {
+            observations.add(ObservationSpec.table(tableName, tableRouteScope, routeScope, true));
             return this;
         }
 
         @Override
         public ObserveSpec entity(Class<?> entityType) {
-            observations.add(ObservationSpec.entity(entityType, RouteScope.empty(), false));
+            observations.add(ObservationSpec.entity(entityType, TableRouteScope.empty(), RouteScope.empty(), false));
             return this;
         }
 
         @Override
         public ObserveSpec entity(Class<?> entityType, RouteScope routeScope) {
-            observations.add(ObservationSpec.entity(entityType, routeScope, false));
+            observations.add(ObservationSpec.entity(entityType, TableRouteScope.empty(), routeScope, false));
+            return this;
+        }
+
+        @Override
+        public ObserveSpec entity(Class<?> entityType, TableRouteScope tableRouteScope) {
+            observations.add(ObservationSpec.entity(entityType, tableRouteScope, RouteScope.empty(), false));
+            return this;
+        }
+
+        @Override
+        public ObserveSpec entity(Class<?> entityType, TableRouteScope tableRouteScope, RouteScope routeScope) {
+            observations.add(ObservationSpec.entity(entityType, tableRouteScope, routeScope, false));
             return this;
         }
 
         @Override
         public ObserveSpec shardedEntity(Class<?> entityType, RouteScope routeScope) {
-            observations.add(ObservationSpec.entity(entityType, routeScope, true));
+            observations.add(ObservationSpec.entity(entityType, TableRouteScope.empty(), routeScope, true));
+            return this;
+        }
+
+        @Override
+        public ObserveSpec shardedEntity(Class<?> entityType, TableRouteScope tableRouteScope, RouteScope routeScope) {
+            observations.add(ObservationSpec.entity(entityType, tableRouteScope, routeScope, true));
             return this;
         }
     }

@@ -11,6 +11,7 @@ public final class ObservationSpec {
     private final ObservationMode observationMode;
     private final String resourceName;
     private final Class<?> resourceType;
+    private final TableRouteScope tableRouteScope;
     private final RouteScope routeScope;
     private final boolean routeRequired;
     private final FixtureHandle<?> fixtureHandle;
@@ -19,6 +20,7 @@ public final class ObservationSpec {
                             ObservationMode observationMode,
                             String resourceName,
                             Class<?> resourceType,
+                            TableRouteScope tableRouteScope,
                             RouteScope routeScope,
                             boolean routeRequired,
                             FixtureHandle<?> fixtureHandle) {
@@ -26,6 +28,7 @@ public final class ObservationSpec {
         this.observationMode = Objects.requireNonNull(observationMode, "observationMode must not be null");
         this.resourceName = requireText(resourceName, "resourceName must not be blank");
         this.resourceType = resourceType;
+        this.tableRouteScope = tableRouteScope == null ? TableRouteScope.empty() : tableRouteScope;
         this.routeScope = routeScope == null ? RouteScope.empty() : routeScope;
         this.routeRequired = routeRequired;
         this.fixtureHandle = fixtureHandle;
@@ -37,6 +40,7 @@ public final class ObservationSpec {
             ObservationMode.FIXTURE_BACKED,
             handle.getType().getName(),
             handle.getType(),
+            TableRouteScope.empty(),
             RouteScope.empty(),
             false,
             handle
@@ -44,11 +48,19 @@ public final class ObservationSpec {
     }
 
     public static ObservationSpec table(String tableName, RouteScope routeScope, boolean routeRequired) {
+        return table(tableName, TableRouteScope.empty(), routeScope, routeRequired);
+    }
+
+    public static ObservationSpec table(String tableName,
+                                        TableRouteScope tableRouteScope,
+                                        RouteScope routeScope,
+                                        boolean routeRequired) {
         return new ObservationSpec(
             ResourceKind.TABLE,
             ObservationMode.WATCH_ONLY,
             tableName,
             null,
+            tableRouteScope,
             routeScope,
             routeRequired,
             null
@@ -56,11 +68,19 @@ public final class ObservationSpec {
     }
 
     public static ObservationSpec entity(Class<?> entityType, RouteScope routeScope, boolean routeRequired) {
+        return entity(entityType, TableRouteScope.empty(), routeScope, routeRequired);
+    }
+
+    public static ObservationSpec entity(Class<?> entityType,
+                                         TableRouteScope tableRouteScope,
+                                         RouteScope routeScope,
+                                         boolean routeRequired) {
         return new ObservationSpec(
             ResourceKind.ENTITY,
             ObservationMode.WATCH_ONLY,
             entityType.getName(),
             entityType,
+            tableRouteScope,
             routeScope,
             routeRequired,
             null
@@ -81,6 +101,10 @@ public final class ObservationSpec {
 
     public Class<?> getResourceType() {
         return resourceType;
+    }
+
+    public TableRouteScope getTableRouteScope() {
+        return tableRouteScope;
     }
 
     public RouteScope getRouteScope() {

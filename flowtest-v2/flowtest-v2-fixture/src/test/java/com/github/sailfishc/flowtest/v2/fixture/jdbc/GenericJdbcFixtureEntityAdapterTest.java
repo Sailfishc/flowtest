@@ -1,5 +1,8 @@
 package com.github.sailfishc.flowtest.v2.fixture.jdbc;
 
+import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcDynamicTable;
+import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
+import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -25,7 +28,11 @@ class GenericJdbcFixtureEntityAdapterTest {
         dataSource.setPassword("");
 
         executeSql("drop table if exists ft_user");
+        executeSql("drop table if exists ft_user_a");
+        executeSql("drop table if exists ft_user_b");
         executeSql("create table ft_user (id bigint primary key, tenant_id bigint, display_name varchar(64))");
+        executeSql("create table ft_user_a (id bigint primary key, bucket varchar(16), display_name varchar(64))");
+        executeSql("create table ft_user_b (id bigint primary key, bucket varchar(16), display_name varchar(64))");
     }
 
     @Test
@@ -60,6 +67,35 @@ class GenericJdbcFixtureEntityAdapterTest {
         }
 
         assertThat(queryForLong("select count(*) from ft_user")).isEqualTo(0L);
+    }
+
+    @Test
+    void shouldPersistReloadAndDeleteAgainstResolvedDynamicTable() throws Exception {
+        JdbcObservationRegistry registry = new JdbcObservationRegistry().registerEntity(DynamicUser.class);
+        GenericJdbcFixtureEntityAdapter<DynamicUser> adapter = GenericJdbcFixtureEntityAdapter.of(
+            registry.getEntityRegistrations().get(DynamicUser.class)
+        );
+
+        DynamicUser user = new DynamicUser();
+        user.setId(2L);
+        user.setBucket("a");
+        user.setName("Bob");
+
+        Connection connection = dataSource.getConnection();
+        try {
+            adapter.insert(connection, user);
+            DynamicUser reloaded = adapter.reload(connection, user);
+            assertThat(reloaded.getId()).isEqualTo(2L);
+            assertThat(reloaded.getBucket()).isEqualTo("a");
+            assertThat(reloaded.getName()).isEqualTo("Bob");
+
+            adapter.delete(connection, user);
+        } finally {
+            connection.close();
+        }
+
+        assertThat(queryForLong("select count(*) from ft_user_a")).isEqualTo(0L);
+        assertThat(queryForLong("select count(*) from ft_user_b")).isEqualTo(0L);
     }
 
     private void executeSql(String sql) throws Exception {
@@ -118,6 +154,42 @@ class GenericJdbcFixtureEntityAdapterTest {
             this.tenantId = tenantId;
         }
 
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+    }
+
+    @JdbcEntity(table = "ft_user", keyColumns = {"id"})
+    @JdbcDynamicTable(property = "bucket")
+    static final class DynamicUser {
+
+        private Long id;
+
+        @com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcIgnore
+        private String bucket;
+        private String name;
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getBucket() {
+            return bucket;
+        }
+
+        public void setBucket(String bucket) {
+            this.bucket = bucket;
+        }
+
+        @com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcColumn("display_name")
         public String getName() {
             return name;
         }

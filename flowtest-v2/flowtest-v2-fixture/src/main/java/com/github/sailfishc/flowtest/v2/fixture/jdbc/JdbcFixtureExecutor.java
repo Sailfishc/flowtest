@@ -83,7 +83,7 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
         FixtureEntityAdapter<T> adapter = adapterRegistry.requireAdapter(fixture.getEntityType());
         Connection connection = null;
         try {
-            connection = resolveDataSource(fixture.getEntityType()).getConnection();
+            connection = resolveDataSource(fixture.getEntityType(), entity).getConnection();
             adapter.insert(connection, entity);
         } finally {
             if (connection != null) {
@@ -132,7 +132,7 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
             T current = resolve(handle);
             Connection connection = null;
             try {
-                connection = resolveDataSource(handle.getType()).getConnection();
+                connection = resolveDataSource(handle.getType(), current).getConnection();
                 T reloaded = adapter.reload(connection, current);
                 resolved.put(handle, reloaded);
                 return reloaded;
@@ -160,7 +160,7 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
             T entity = fixture.getEntityType().cast(resolved.get(fixture.getHandle()));
             Connection connection = null;
             try {
-                connection = resolveDataSource(fixture.getEntityType()).getConnection();
+                connection = resolveDataSource(fixture.getEntityType(), entity).getConnection();
                 adapter.delete(connection, entity);
             } finally {
                 if (connection != null) {
@@ -169,7 +169,7 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
             }
         }
 
-        private DataSource resolveDataSource(Class<?> entityType) {
+        private DataSource resolveDataSource(Class<?> entityType, Object entity) {
             if (dataSourceRegistry == null) {
                 return dataSource;
             }
@@ -177,11 +177,11 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
             if (registration == null) {
                 throw new IllegalArgumentException("No JDBC entity registration found for " + entityType.getName());
             }
-            return dataSourceRegistry.requireDataSource(registration.getIdentity().getTableName());
+            return dataSourceRegistry.requireDataSource(registration.resolveTableName(entity));
         }
     }
 
-    private DataSource resolveDataSource(Class<?> entityType) {
+    private DataSource resolveDataSource(Class<?> entityType, Object entity) {
         if (dataSourceRegistry == null) {
             return dataSource;
         }
@@ -192,6 +192,6 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
         if (registration == null) {
             throw new IllegalArgumentException("No JDBC entity registration found for " + entityType.getName());
         }
-        return dataSourceRegistry.requireDataSource(registration.getIdentity().getTableName());
+        return dataSourceRegistry.requireDataSource(registration.resolveTableName(entity));
     }
 }
