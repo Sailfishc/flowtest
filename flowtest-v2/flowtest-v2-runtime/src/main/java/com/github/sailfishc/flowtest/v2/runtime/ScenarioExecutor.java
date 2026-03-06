@@ -1,6 +1,7 @@
 package com.github.sailfishc.flowtest.v2.runtime;
 
 import com.github.sailfishc.flowtest.v2.assertion.ExpectationSet;
+import com.github.sailfishc.flowtest.v2.assertion.FixtureChangeExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.FixtureStateExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeAssertionExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeExpectation;
@@ -125,6 +126,7 @@ public final class ScenarioExecutor {
         verifyChanges(expectations.getChangeExpectations(), diff);
         verifyChangeAssertions(expectations.getChangeAssertionExpectations(), diff);
         verifyFixtures(expectations.getFixtureExpectations(), fixtureExecution);
+        verifyFixtureChanges(expectations.getFixtureChangeExpectations(), fixtureExecution);
         if (failure != null
             && expectations.getResultAssertions().isEmpty()
             && !verifications.isEmpty()
@@ -186,6 +188,19 @@ public final class ScenarioExecutor {
     private void verifyFixture(FixtureStateExpectation<?> expectation, FixtureExecution fixtureExecution) throws Exception {
         Object value = fixtureExecution.reload(expectation.getHandle());
         ((com.github.sailfishc.flowtest.v2.assertion.FixtureAssertion) expectation.getAssertion()).verify(value);
+    }
+
+    private void verifyFixtureChanges(List<FixtureChangeExpectation<?>> expectations, FixtureExecution fixtureExecution) throws Exception {
+        for (FixtureChangeExpectation<?> expectation : expectations) {
+            verifyFixtureChange(expectation, fixtureExecution);
+        }
+    }
+
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    private void verifyFixtureChange(FixtureChangeExpectation<?> expectation, FixtureExecution fixtureExecution) throws Exception {
+        Object before = fixtureExecution.resolve(expectation.getHandle());
+        Object after = fixtureExecution.reload(expectation.getHandle());
+        ((com.github.sailfishc.flowtest.v2.assertion.FixtureChangeAssertion) expectation.getAssertion()).verify(before, after);
     }
 
     private Throwable cleanup(CleanupPolicy cleanupPolicy,

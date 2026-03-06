@@ -24,6 +24,22 @@ public final class RowAssertions {
         };
     }
 
+    public static RowAssertion columns(String firstColumn, Object firstValue, Object... remainingPairs) {
+        if (remainingPairs.length % 2 != 0) {
+            throw new IllegalArgumentException("remainingPairs must contain an even number of elements (key-value pairs)");
+        }
+        int pairCount = 1 + remainingPairs.length / 2;
+        RowAssertion[] assertions = new RowAssertion[pairCount];
+        assertions[0] = columnEquals(firstColumn, firstValue);
+        for (int i = 0; i < remainingPairs.length; i += 2) {
+            if (!(remainingPairs[i] instanceof String)) {
+                throw new IllegalArgumentException("Column name at position " + (i + 2) + " must be a String");
+            }
+            assertions[1 + i / 2] = columnEquals((String) remainingPairs[i], remainingPairs[i + 1]);
+        }
+        return allOf(assertions);
+    }
+
     public static RowAssertion allOf(final RowAssertion... assertions) {
         return new RowAssertion() {
             @Override

@@ -2,13 +2,18 @@ package com.github.sailfishc.flowtest.v2.runtime;
 
 import com.github.sailfishc.flowtest.v2.assertion.ExpectationSet;
 import com.github.sailfishc.flowtest.v2.assertion.FixtureAssertion;
+import com.github.sailfishc.flowtest.v2.assertion.FixtureChangeAssertion;
+import com.github.sailfishc.flowtest.v2.assertion.FixtureChangeExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.FixtureStateExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.ModifiedRowAssertion;
+import com.github.sailfishc.flowtest.v2.assertion.ModifiedRowListSpec;
 import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeAssertion;
 import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeAssertionExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.ResultAssertion;
 import com.github.sailfishc.flowtest.v2.assertion.RowAssertion;
+import com.github.sailfishc.flowtest.v2.assertion.RowListAssertions;
+import com.github.sailfishc.flowtest.v2.assertion.RowListSpec;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
@@ -223,6 +228,7 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         private final List<ResourceChangeAssertionExpectation> changeAssertionExpectations =
             new ArrayList<ResourceChangeAssertionExpectation>();
         private final List<FixtureStateExpectation<?>> fixtureExpectations = new ArrayList<FixtureStateExpectation<?>>();
+        private final List<FixtureChangeExpectation<?>> fixtureChangeExpectations = new ArrayList<FixtureChangeExpectation<?>>();
 
         private DefaultScenarioPlan(String name,
                                     List<FixtureSpec<?>> fixtures,
@@ -260,7 +266,8 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
                     resultAssertions,
                     changeExpectations,
                     changeAssertionExpectations,
-                    fixtureExpectations
+                    fixtureExpectations,
+                    fixtureChangeExpectations
                 ),
                 scenarioVerifications
             );
@@ -377,6 +384,22 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
             return this;
         }
 
+        @Override
+        public <T> ThenSpec<R> fixtureChange(FixtureHandle<T> handle, FixtureChangeAssertion<T> assertion) {
+            fixtureChangeExpectations.add(new FixtureChangeExpectation<T>(handle, assertion));
+            return this;
+        }
+
+        @Override
+        public TableChangeSpec<R> table(String tableName) {
+            return new DefaultTableChangeSpec<R>(this, tableName);
+        }
+
+        @Override
+        public TableChangeSpec<R> entity(Class<?> entityType) {
+            return new DefaultTableChangeSpec<R>(this, entityType.getName());
+        }
+
         private void assertAnyInsertedRowMatches(com.github.sailfishc.flowtest.v2.spec.ResourceChange change,
                                                  RowAssertion assertion) {
             assertAnyRowMatches("inserted", change.getInsertedRows(), assertion);
@@ -422,6 +445,83 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
                 throw new AssertionError(message);
             }
             throw new AssertionError(message + ": " + lastError.getMessage(), lastError);
+        }
+    }
+
+    /**
+     * Fluent child builder for table/entity-level expectations.
+     * Methods eagerly append expectations to the parent plan.
+     */
+    private static final class DefaultTableChangeSpec<R> implements TableChangeSpec<R> {
+
+        private final DefaultScenarioPlan<R> parent;
+        private final String resourceName;
+
+        DefaultTableChangeSpec(DefaultScenarioPlan<R> parent, String resourceName) {
+            this.parent = parent;
+            this.resourceName = resourceName;
+        }
+
+        @Override
+        public TableChangeSpec<R> inserted(long count) {
+            parent.changeExpectations.add(new ResourceChangeExpectation(resourceName, count, null, null));
+            return this;
+        }
+
+        @Override
+        public TableChangeSpec<R> deleted(long count) {
+            parent.changeExpectations.add(new ResourceChangeExpectation(resourceName, null, count, null));
+            return this;
+        }
+
+        @Override
+        public TableChangeSpec<R> modified(long count) {
+            parent.changeExpectations.add(new ResourceChangeExpectation(resourceName, null, null, count));
+            return this;
+        }
+
+        @Override
+        public TableChangeSpec<R> insertedRow(RowAssertion assertion) {
+            parent.insertedRow(resourceName, assertion);
+            return this;
+        }
+
+        @Override
+        public TableChangeSpec<R> deletedRow(RowAssertion assertion) {
+            parent.deletedRow(resourceName, assertion);
+            return this;
+        }
+
+        @Override
+        public TableChangeSpec<R> modifiedRow(ModifiedRowAssertion assertion) {
+            parent.modifiedRow(resourceName, assertion);
+            return this;
+        }
+
+        @Override
+        public TableChangeSpec<R> insertedRows(Consumer<RowListSpec> spec) {
+            parent.changeAssertionExpectations.add(
+                new ResourceChangeAssertionExpectation(resourceName, RowListAssertions.insertedRows(spec)));
+            return this;
+        }
+
+        @Override
+        public TableChangeSpec<R> deletedRows(Consumer<RowListSpec> spec) {
+            parent.changeAssertionExpectations.add(
+                new ResourceChangeAssertionExpectation(resourceName, RowListAssertions.deletedRows(spec)));
+            return this;
+        }
+
+        @Override
+        public TableChangeSpec<R> modifiedRows(Consumer<ModifiedRowListSpec> spec) {
+            parent.changeAssertionExpectations.add(
+                new ResourceChangeAssertionExpectation(resourceName, RowListAssertions.modifiedRows(spec)));
+            return this;
+        }
+
+        @Override
+        public ThenSpec<R> and() {
+            return parent;
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.github.sailfishc.flowtest.v2.runtime;
 
+import com.github.sailfishc.flowtest.v2.assertion.FixtureChangeExpectation;
 import com.github.sailfishc.flowtest.v2.assertion.FixtureStateExpectation;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
@@ -48,6 +49,12 @@ public final class ScenarioCompiler {
         for (FixtureStateExpectation<?> expectation : definition.getExpectations().getFixtureExpectations()) {
             if (!handles.contains(expectation.getHandle())) {
                 issues.add("Fixture expectation references undeclared handle: " + expectation.getHandle().identifier());
+            }
+        }
+
+        for (FixtureChangeExpectation<?> expectation : definition.getExpectations().getFixtureChangeExpectations()) {
+            if (!handles.contains(expectation.getHandle())) {
+                issues.add("Fixture change expectation references undeclared handle: " + expectation.getHandle().identifier());
             }
         }
         return issues;
