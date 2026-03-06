@@ -1,0 +1,214 @@
+package com.github.sailfishc.flowtest.v2.runtime;
+
+import com.github.sailfishc.flowtest.v2.FlowTestV2;
+import com.github.sailfishc.flowtest.v2.fixture.FixtureExecution;
+import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
+import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
+import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
+import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
+import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
+import com.github.sailfishc.flowtest.v2.spec.ObservationDiff;
+import com.github.sailfishc.flowtest.v2.spec.ObservationExecutor;
+import com.github.sailfishc.flowtest.v2.spec.ObservationSnapshot;
+import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
+import com.github.sailfishc.flowtest.v2.spec.ResourceSnapshot;
+import com.github.sailfishc.flowtest.v2.spec.RowKey;
+import com.github.sailfishc.flowtest.v2.spec.RowSnapshot;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+class ScenarioExecutorTest {
+
+    @Test
+    void shouldExecuteScenarioAndVerifyInsertedRows() throws Exception {
+        List<ObservationSnapshot> snapshots = Arrays.asList(
+            snapshot("orders"),
+            snapshot("orders", row(1L, "status", "CREATED"))
+        );
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(snapshots);
+        ScenarioExecutor executor = new ScenarioExecutor(observationExecutor);
+
+        ScenarioExecutionResult<String> result = FlowTestV2.scenario("act-only")
+            .observe(o -> o.table("orders"))
+            .when(() -> "done")
+            .then(t -> t.expectNoException().inserted("orders", 1))
+            .execute(executor);
+
+        assertThat(result.getResult()).isEqualTo("done");
+        assertThat(result.getDiff().getChange("orders").getInsertedCount()).isEqualTo(1L);
+        assertThat(observationExecutor.getLastCleanupPolicy()).isEqualTo(CleanupPolicy.DELETE_INSERTED);
+    }
+
+    @Test
+    void shouldReloadFixtureForFixtureAssertions() throws Exception {
+        final FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
+        RecordingFixtureExecutor fixtureExecutor = new RecordingFixtureExecutor(user, new TestUser(1L, "before"), new TestUser(1L, "after"));
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(Arrays.asList(
+            snapshot(TestUser.class.getName()),
+            snapshot(TestUser.class.getName())
+        ));
+        ScenarioExecutor executor = new ScenarioExecutor(fixtureExecutor, observationExecutor);
+
+        ScenarioExecutionResult<String> result = FlowTestV2.scenario("mixed")
+            .given(g -> g.persist(user, nameTrait("before")))
+            .observe(o -> o.fixture(user))
+            .cleanup(CleanupPolicy.DELETE_FIXTURE)
+            .when(() -> "ok")
+            .then(t -> t.fixture(user, value -> assertThat(value.getName()).isEqualTo("after")))
+            .execute(executor);
+
+        assertThat(result.getResult()).isEqualTo("ok");
+        assertThat(fixtureExecutor.isReloaded()).isTrue();
+        assertThat(fixtureExecutor.isCleaned()).isTrue();
+    }
+
+    @Test
+    void shouldRethrowUnhandledActionFailure() {
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(Arrays.asList(
+            snapshot("orders"),
+            snapshot("orders")
+        ));
+        ScenarioExecutor executor = new ScenarioExecutor(observationExecutor);
+
+        assertThatThrownBy(() -> FlowTestV2.scenario("failure")
+            .observe(o -> o.table("orders"))
+            .when(() -> {
+                throw new IllegalStateException("boom");
+            })
+            .execute(executor))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessage("boom");
+    }
+
+    private static ObservationSnapshot snapshot(String resourceName, RowSnapshot... rows) {
+        return new ObservationSnapshot(Collections.singletonList(new ResourceSnapshot(resourceName, Arrays.asList(rows))));
+    }
+
+    private static RowSnapshot row(Long id, Object... kv) {
+        Map<String, Object> columns = new LinkedHashMap<String, Object>();
+        columns.put("id", id);
+        for (int i = 0; i < kv.length; i += 2) {
+            columns.put(String.valueOf(kv[i]), kv[i + 1]);
+        }
+        return new RowSnapshot(RowKey.of(id), columns);
+    }
+
+    private static final class RecordingObservationExecutor implements ObservationExecutor {
+
+        private final List<ObservationSnapshot> snapshots;
+        private int index;
+        private CleanupPolicy lastCleanupPolicy;
+
+        private RecordingObservationExecutor(List<ObservationSnapshot> snapshots) {
+            this.snapshots = new ArrayList<ObservationSnapshot>(snapshots);
+        }
+
+        @Override
+        public ObservationSnapshot capture(List<ObservationSpec> observations) {
+            ObservationSnapshot snapshot = snapshots.get(index);
+            index++;
+            return snapshot;
+        }
+
+        @Override
+        public void cleanup(List<ObservationSpec> observations, ObservationDiff diff, CleanupPolicy cleanupPolicy) {
+            this.lastCleanupPolicy = cleanupPolicy;
+        }
+
+        public CleanupPolicy getLastCleanupPolicy() {
+            return lastCleanupPolicy;
+        }
+    }
+
+    private static FixtureTrait<TestUser> nameTrait(final String name) {
+        return new FixtureTrait<TestUser>() {
+            @Override
+            public void apply(TestUser target, com.github.sailfishc.flowtest.v2.spec.TraitContext context) {
+                target.setName(name);
+            }
+        };
+    }
+
+    private static final class RecordingFixtureExecutor implements FixtureExecutor {
+
+        private final FixtureHandle<TestUser> handle;
+        private final TestUser created;
+        private final TestUser reloaded;
+        private boolean reloadedFlag;
+        private boolean cleaned;
+
+        private RecordingFixtureExecutor(FixtureHandle<TestUser> handle, TestUser created, TestUser reloaded) {
+            this.handle = handle;
+            this.created = created;
+            this.reloaded = reloaded;
+        }
+
+        @Override
+        public FixtureExecution prepare(List<FixtureSpec<?>> fixtures) {
+            return new FixtureExecution() {
+                @Override
+                public <T> T resolve(FixtureHandle<T> target) {
+                    return target.getType().cast(created);
+                }
+
+                @Override
+                public <T> T reload(FixtureHandle<T> target) {
+                    reloadedFlag = true;
+                    return target.getType().cast(reloaded);
+                }
+
+                @Override
+                public void cleanup() {
+                    cleaned = true;
+                }
+            };
+        }
+
+        public boolean isReloaded() {
+            return reloadedFlag;
+        }
+
+        public boolean isCleaned() {
+            return cleaned;
+        }
+    }
+
+    private static final class TestUser {
+
+        private Long id;
+        private String name;
+
+        private TestUser() {
+        }
+
+        private TestUser(Long id, String name) {
+            this.id = id;
+            this.name = name;
+        }
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public String getName() {
+            return name;
+        }
+
+        public void setName(String name) {
+            this.name = name;
+        }
+    }
+}
