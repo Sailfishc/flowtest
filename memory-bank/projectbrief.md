@@ -19,4 +19,4 @@ FlowTest is a multi-module Java 8 integration testing framework. The repository 
 
 ## Important Repos/Modules
 - Legacy: `flowtest-core`, `flowtest-junit5`, `flowtest-testng`, `flowtest-mockito`, `flowtest-spring-boot-starter`
-- New: `flowtest-v2-spec`, `flowtest-v2-assertion`, `flowtest-v2-fixture`, `flowtest-v2-observe-rdbms`, `flowtest-v2-runtime`, `flowtest-v2-cases`
+- New: `flowtest-v2-spec`, `flowtest-v2-assertion`, `flowtest-v2-fixture`, `flowtest-v2-observe-rdbms`, `flowtest-v2-runtime`, `flowtest-v2-junit5`, `flowtest-v2-testng`, `flowtest-v2-spring-boot-starter`, `flowtest-v2-cases`

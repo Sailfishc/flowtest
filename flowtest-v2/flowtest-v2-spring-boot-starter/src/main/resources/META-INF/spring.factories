@@ -1,0 +1,2 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+com.github.sailfishc.flowtest.v2.spring.boot.FlowTestV2AutoConfiguration

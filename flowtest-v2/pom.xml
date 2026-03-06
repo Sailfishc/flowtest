@@ -24,6 +24,9 @@
         <module>flowtest-v2-fixture</module>
         <module>flowtest-v2-observe-rdbms</module>
         <module>flowtest-v2-runtime</module>
+        <module>flowtest-v2-junit5</module>
+        <module>flowtest-v2-testng</module>
+        <module>flowtest-v2-spring-boot-starter</module>
         <module>flowtest-v2-cases</module>
     </modules>
 
@@ -52,6 +55,21 @@
             <dependency>
                 <groupId>com.github.sailfishc</groupId>
                 <artifactId>flowtest-v2-runtime</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.sailfishc</groupId>
+                <artifactId>flowtest-v2-junit5</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.sailfishc</groupId>
+                <artifactId>flowtest-v2-testng</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.sailfishc</groupId>
+                <artifactId>flowtest-v2-spring-boot-starter</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

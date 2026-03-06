@@ -7,6 +7,9 @@
 - JDBC snapshot/diff/cleanup works for inserted-row cleanup.
 - JDBC cleanup now also supports `RESTORE_BEFORE_IMAGE` for inserted, modified, and deleted rows.
 - Runtime executes expectations for outcome, fixture state, and change counts.
+- JUnit 5 integration resolves `ScenarioExecutor` via extension builder or provider interface.
+- TestNG integration injects `ScenarioExecutor` via listener and annotated fields.
+- Spring Boot starter auto-configures JDBC registries, executors, and `ScenarioExecutor`.
 - H2-backed case module proves act-only, mixed fixture/watch-only, and watch-only restore flows.
 
 ## Validation
@@ -16,8 +19,8 @@
 ## What Is Not Done Yet
 - `ROLLBACK` needs an external transaction-aware executor.
 - `CUSTOM_COMPENSATOR` is not implemented.
-- No dedicated `v2` JUnit 5 or Spring integration module yet.
 - Row-content assertions are still count-oriented; there is no first-class DSL yet for before/after field assertions.
+- There is no dedicated Spring Test/TestNG transaction bridge yet for rollback-style cleanup.
 
 ## Known Constraints
 - JDBC fixture support relies on explicit adapters per entity type.
