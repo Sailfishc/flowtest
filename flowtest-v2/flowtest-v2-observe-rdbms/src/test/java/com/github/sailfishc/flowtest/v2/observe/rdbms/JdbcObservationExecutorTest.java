@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.Collections;
 import java.util.List;
@@ -67,6 +68,36 @@ class JdbcObservationExecutorTest {
         assertThat(queryForLong("select count(*) from ft_order where tenant_id = 200")).isEqualTo(1L);
     }
 
+    @Test
+    void shouldRestoreModifiedAndDeletedRowsWithinRoute() throws Exception {
+        List<ObservationSpec> observations = Collections.singletonList(
+            ObservationSpec.table("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L)), false)
+        );
+
+        executeSql("insert into ft_order(id, tenant_id, status) values (1, 100, 'CREATED')");
+        executeSql("insert into ft_order(id, tenant_id, status) values (2, 100, 'RESERVED')");
+        executeSql("insert into ft_order(id, tenant_id, status) values (3, 200, 'HISTORICAL')");
+
+        ObservationSnapshot before = executor.capture(observations);
+        executeSql("update ft_order set status = 'PAID' where id = 1");
+        executeSql("delete from ft_order where id = 2");
+        executeSql("insert into ft_order(id, tenant_id, status) values (4, 100, 'CREATED')");
+        ObservationSnapshot after = executor.capture(observations);
+
+        ObservationDiff diff = ObservationDiff.between(before, after);
+
+        assertThat(diff.getChange("ft_order").getInsertedCount()).isEqualTo(1L);
+        assertThat(diff.getChange("ft_order").getModifiedCount()).isEqualTo(1L);
+        assertThat(diff.getChange("ft_order").getDeletedCount()).isEqualTo(1L);
+
+        executor.cleanup(observations, diff, CleanupPolicy.RESTORE_BEFORE_IMAGE);
+
+        assertThat(queryForString("select status from ft_order where id = 1")).isEqualTo("CREATED");
+        assertThat(queryForString("select status from ft_order where id = 2")).isEqualTo("RESERVED");
+        assertThat(queryForString("select status from ft_order where id = 3")).isEqualTo("HISTORICAL");
+        assertThat(queryForLong("select count(*) from ft_order where id = 4")).isEqualTo(0L);
+    }
+
     private void executeSql(String sql) throws Exception {
         Connection connection = dataSource.getConnection();
         try {
@@ -90,6 +121,26 @@ class JdbcObservationExecutorTest {
                 return resultSet.getLong(1);
             } finally {
                 resultSet.close();
+            }
+        } finally {
+            connection.close();
+        }
+    }
+
+    private String queryForString(String sql) throws Exception {
+        Connection connection = dataSource.getConnection();
+        try {
+            Statement statement = connection.createStatement();
+            try {
+                ResultSet resultSet = statement.executeQuery(sql);
+                try {
+                    resultSet.next();
+                    return resultSet.getString(1);
+                } finally {
+                    resultSet.close();
+                }
+            } finally {
+                statement.close();
             }
         } finally {
             connection.close();

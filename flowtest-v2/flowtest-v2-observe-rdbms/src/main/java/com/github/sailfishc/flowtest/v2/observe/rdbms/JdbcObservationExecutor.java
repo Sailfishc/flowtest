@@ -50,13 +50,11 @@ public final class JdbcObservationExecutor implements ObservationExecutor {
     @Override
     public void cleanup(List<ObservationSpec> observations, ObservationDiff diff, CleanupPolicy cleanupPolicy) throws Exception {
         if (cleanupPolicy == CleanupPolicy.DELETE_INSERTED) {
-            for (int i = observations.size() - 1; i >= 0; i--) {
-                ObservationSpec observation = observations.get(i);
-                ResourceChange change = diff.getChange(observation.getResourceName());
-                if (change != null && !change.getInsertedRows().isEmpty()) {
-                    deleteInsertedRows(observation, change.getInsertedRows());
-                }
-            }
+            executeCleanup(observations, diff, false);
+            return;
+        }
+        if (cleanupPolicy == CleanupPolicy.RESTORE_BEFORE_IMAGE) {
+            executeCleanup(observations, diff, true);
             return;
         }
         if (cleanupPolicy == CleanupPolicy.DELETE_FIXTURE) {
@@ -87,24 +85,69 @@ public final class JdbcObservationExecutor implements ObservationExecutor {
         }
     }
 
-    private void deleteInsertedRows(ObservationSpec observation, List<RowSnapshot> rows) throws Exception {
-        JdbcObservationRegistry.JdbcObservedResource resource = registry.resolve(observation);
+    private void executeCleanup(List<ObservationSpec> observations, ObservationDiff diff, boolean restoreBeforeImage) throws Exception {
         Connection connection = null;
         try {
             connection = dataSource.getConnection();
-            for (RowSnapshot row : rows) {
-                SqlStatement sql = buildDelete(resource.getIdentity(), row);
-                PreparedStatement statement = null;
-                try {
-                    statement = connection.prepareStatement(sql.getSql());
-                    bindParameters(statement, sql.getParameters());
-                    statement.executeUpdate();
-                } finally {
-                    closeQuietly(statement);
+            boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                for (int i = observations.size() - 1; i >= 0; i--) {
+                    ObservationSpec observation = observations.get(i);
+                    ResourceChange change = diff.getChange(observation.getResourceName());
+                    if (change != null && !change.getInsertedRows().isEmpty()) {
+                        deleteInsertedRows(connection, observation, change.getInsertedRows());
+                    }
                 }
+                if (restoreBeforeImage) {
+                    restoreDeletedRows(connection, observations, diff);
+                    restoreModifiedRows(connection, observations, diff);
+                }
+                connection.commit();
+            } catch (Exception ex) {
+                rollbackQuietly(connection);
+                throw ex;
+            } finally {
+                connection.setAutoCommit(autoCommit);
             }
         } finally {
             closeQuietly(connection);
+        }
+    }
+
+    private void deleteInsertedRows(Connection connection, ObservationSpec observation, List<RowSnapshot> rows) throws Exception {
+        JdbcObservationRegistry.JdbcObservedResource resource = registry.resolve(observation);
+        for (RowSnapshot row : rows) {
+            executeStatement(connection, buildDelete(resource.getIdentity(), row, observation.getRouteScope()));
+        }
+    }
+
+    private void restoreDeletedRows(Connection connection, List<ObservationSpec> observations, ObservationDiff diff) throws Exception {
+        for (ObservationSpec observation : observations) {
+            ResourceChange change = diff.getChange(observation.getResourceName());
+            if (change == null || change.getDeletedRows().isEmpty()) {
+                continue;
+            }
+            JdbcObservationRegistry.JdbcObservedResource resource = registry.resolve(observation);
+            for (RowSnapshot row : change.getDeletedRows()) {
+                executeStatement(connection, buildInsert(resource.getIdentity(), row));
+            }
+        }
+    }
+
+    private void restoreModifiedRows(Connection connection, List<ObservationSpec> observations, ObservationDiff diff) throws Exception {
+        for (ObservationSpec observation : observations) {
+            ResourceChange change = diff.getChange(observation.getResourceName());
+            if (change == null || change.getModifiedRows().isEmpty()) {
+                continue;
+            }
+            JdbcObservationRegistry.JdbcObservedResource resource = registry.resolve(observation);
+            for (com.github.sailfishc.flowtest.v2.spec.ModifiedRow row : change.getModifiedRows()) {
+                SqlStatement sql = buildUpdate(resource.getIdentity(), row.getBefore(), observation.getRouteScope());
+                if (sql != null) {
+                    executeStatement(connection, sql);
+                }
+            }
         }
     }
 
@@ -133,13 +176,62 @@ public final class JdbcObservationExecutor implements ObservationExecutor {
     private SqlStatement buildSelect(TableIdentity identity, RouteScope routeScope) {
         StringBuilder sql = new StringBuilder("select * from ").append(identity.getTableName());
         List<Object> parameters = new ArrayList<Object>();
-        appendRoute(sql, parameters, routeScope);
+        appendRoute(sql, parameters, routeScope, false);
         return new SqlStatement(sql.toString(), parameters);
     }
 
-    private SqlStatement buildDelete(TableIdentity identity, RowSnapshot row) {
+    private SqlStatement buildDelete(TableIdentity identity, RowSnapshot row, RouteScope routeScope) {
         StringBuilder sql = new StringBuilder("delete from ").append(identity.getTableName()).append(" where ");
         List<Object> parameters = new ArrayList<Object>();
+        appendKeyConditions(sql, parameters, identity, row);
+        appendRoute(sql, parameters, routeScope, true);
+        return new SqlStatement(sql.toString(), parameters);
+    }
+
+    private SqlStatement buildInsert(TableIdentity identity, RowSnapshot row) {
+        StringBuilder sql = new StringBuilder("insert into ").append(identity.getTableName()).append(" (");
+        StringBuilder values = new StringBuilder(" values (");
+        List<Object> parameters = new ArrayList<Object>();
+        int index = 0;
+        for (Map.Entry<String, Object> entry : row.getColumns().entrySet()) {
+            if (index > 0) {
+                sql.append(", ");
+                values.append(", ");
+            }
+            sql.append(entry.getKey());
+            values.append("?");
+            parameters.add(entry.getValue());
+            index++;
+        }
+        sql.append(")").append(values).append(")");
+        return new SqlStatement(sql.toString(), parameters);
+    }
+
+    private SqlStatement buildUpdate(TableIdentity identity, RowSnapshot row, RouteScope routeScope) {
+        StringBuilder sql = new StringBuilder("update ").append(identity.getTableName()).append(" set ");
+        List<Object> parameters = new ArrayList<Object>();
+        int updatedColumnCount = 0;
+        for (Map.Entry<String, Object> entry : row.getColumns().entrySet()) {
+            if (identity.getKeyColumns().contains(entry.getKey())) {
+                continue;
+            }
+            if (updatedColumnCount > 0) {
+                sql.append(", ");
+            }
+            sql.append(entry.getKey()).append(" = ?");
+            parameters.add(entry.getValue());
+            updatedColumnCount++;
+        }
+        if (updatedColumnCount == 0) {
+            return null;
+        }
+        sql.append(" where ");
+        appendKeyConditions(sql, parameters, identity, row);
+        appendRoute(sql, parameters, routeScope, true);
+        return new SqlStatement(sql.toString(), parameters);
+    }
+
+    private void appendKeyConditions(StringBuilder sql, List<Object> parameters, TableIdentity identity, RowSnapshot row) {
         for (int i = 0; i < identity.getKeyColumns().size(); i++) {
             String keyColumn = identity.getKeyColumns().get(i);
             if (i > 0) {
@@ -153,14 +245,17 @@ public final class JdbcObservationExecutor implements ObservationExecutor {
                 parameters.add(value);
             }
         }
-        return new SqlStatement(sql.toString(), parameters);
     }
 
-    private void appendRoute(StringBuilder sql, List<Object> parameters, RouteScope routeScope) {
+    private void appendRoute(StringBuilder sql, List<Object> parameters, RouteScope routeScope, boolean hasPredicate) {
         if (routeScope == null || routeScope.isEmpty()) {
             return;
         }
-        sql.append(" where ");
+        if (!hasPredicate) {
+            sql.append(" where ");
+        } else {
+            sql.append(" and ");
+        }
         List<RouteCondition> conditions = routeScope.getConditions();
         for (int i = 0; i < conditions.size(); i++) {
             RouteCondition condition = conditions.get(i);
@@ -182,6 +277,28 @@ public final class JdbcObservationExecutor implements ObservationExecutor {
     private void bindParameters(PreparedStatement statement, List<Object> parameters) throws SQLException {
         for (int i = 0; i < parameters.size(); i++) {
             statement.setObject(i + 1, parameters.get(i));
+        }
+    }
+
+    private void executeStatement(Connection connection, SqlStatement sql) throws Exception {
+        PreparedStatement statement = null;
+        try {
+            statement = connection.prepareStatement(sql.getSql());
+            bindParameters(statement, sql.getParameters());
+            statement.executeUpdate();
+        } finally {
+            closeQuietly(statement);
+        }
+    }
+
+    private void rollbackQuietly(Connection connection) {
+        if (connection == null) {
+            return;
+        }
+        try {
+            connection.rollback();
+        } catch (SQLException ignored) {
+            // cleanup rollback failure is surfaced by the original exception
         }
     }
 

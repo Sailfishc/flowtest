@@ -8,6 +8,7 @@ import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationExecutor;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
+import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
 import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
@@ -109,6 +110,56 @@ class FlowTestV2CasesTest {
         assertThat(queryForLong("select count(*) from ft_order where tenant_id = 100")).isEqualTo(0L);
     }
 
+    @Test
+    void shouldRestoreWatchOnlyModifiedRowsWithBeforeImageCleanup() throws Exception {
+        executeSql("insert into ft_order(id, tenant_id, user_id, status) values (101, 100, 7, 'CREATED')");
+        executeSql("insert into ft_order(id, tenant_id, user_id, status) values (102, 200, 7, 'HISTORICAL')");
+
+        ScenarioExecutor executor = new ScenarioExecutor(new JdbcObservationExecutor(
+            dataSource,
+            new JdbcObservationRegistry().registerTable("ft_order", "id")
+        ));
+
+        ScenarioExecutionResult<String> result = FlowTestV2.scenario("restore-modified-order")
+            .observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+            .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
+            .when(() -> {
+                executeSql("update ft_order set status = 'PAID' where id = 101");
+                return "updated";
+            })
+            .then(t -> t.expectNoException().modified("ft_order", 1))
+            .execute(executor);
+
+        assertThat(result.getResult()).isEqualTo("updated");
+        assertThat(queryForString("select status from ft_order where id = 101")).isEqualTo("CREATED");
+        assertThat(queryForString("select status from ft_order where id = 102")).isEqualTo("HISTORICAL");
+    }
+
+    @Test
+    void shouldRestoreWatchOnlyDeletedRowsWithBeforeImageCleanup() throws Exception {
+        executeSql("insert into ft_order(id, tenant_id, user_id, status) values (201, 100, 7, 'CREATED')");
+        executeSql("insert into ft_order(id, tenant_id, user_id, status) values (202, 200, 7, 'HISTORICAL')");
+
+        ScenarioExecutor executor = new ScenarioExecutor(new JdbcObservationExecutor(
+            dataSource,
+            new JdbcObservationRegistry().registerTable("ft_order", "id")
+        ));
+
+        ScenarioExecutionResult<String> result = FlowTestV2.scenario("restore-deleted-order")
+            .observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+            .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
+            .when(() -> {
+                executeSql("delete from ft_order where id = 201");
+                return "deleted";
+            })
+            .then(t -> t.expectNoException().deleted("ft_order", 1))
+            .execute(executor);
+
+        assertThat(result.getResult()).isEqualTo("deleted");
+        assertThat(queryForString("select status from ft_order where id = 201")).isEqualTo("CREATED");
+        assertThat(queryForString("select status from ft_order where id = 202")).isEqualTo("HISTORICAL");
+    }
+
     private FixtureTrait<TestUser> idTrait(final Long id) {
         return new FixtureTrait<TestUser>() {
             @Override
@@ -168,6 +219,26 @@ class FlowTestV2CasesTest {
                 try {
                     resultSet.next();
                     return resultSet.getLong(1);
+                } finally {
+                    resultSet.close();
+                }
+            } finally {
+                statement.close();
+            }
+        } finally {
+            connection.close();
+        }
+    }
+
+    private String queryForString(String sql) throws Exception {
+        Connection connection = dataSource.getConnection();
+        try {
+            Statement statement = connection.createStatement();
+            try {
+                ResultSet resultSet = statement.executeQuery(sql);
+                try {
+                    resultSet.next();
+                    return resultSet.getString(1);
                 } finally {
                     resultSet.close();
                 }
