@@ -1,5 +1,8 @@
 package com.github.sailfishc.flowtest.v2.observe.rdbms;
 
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
 import com.github.sailfishc.flowtest.v2.spec.RouteCondition;
 import com.github.sailfishc.flowtest.v2.spec.RouteScope;
@@ -62,6 +65,30 @@ class JdbcObservationRegistryTest {
         JdbcEntityRegistration registration = registry.getEntityRegistrations().get(OrmUser.class);
 
         assertThat(registration.getIgnoredProperties()).contains("shadowField");
+    }
+
+    @Test
+    void shouldRegisterMybatisPlusEntityWithoutJdbcEntity() {
+        JdbcObservationRegistry registry = new JdbcObservationRegistry().registerEntity(MybatisPlusUser.class);
+
+        JdbcEntityRegistration registration = registry.getEntityRegistrations().get(MybatisPlusUser.class);
+
+        assertThat(registration).isNotNull();
+        assertThat(registration.getIdentity().getTableName()).isEqualTo("ft_mp_user");
+        assertThat(registration.getIdentity().getKeyColumns()).containsExactly("user_id");
+        assertThat(registration.getPropertyColumns())
+            .containsEntry("userId", "user_id")
+            .containsEntry("displayName", "display_name");
+        assertThat(registration.getIgnoredProperties()).contains("bucket");
+        assertThat(registration.resolveTableName(newMybatisUser("a"))).isEqualTo("ft_mp_user_a");
+    }
+
+    private MybatisPlusUser newMybatisUser(String bucket) {
+        MybatisPlusUser user = new MybatisPlusUser();
+        user.setUserId(1L);
+        user.setDisplayName("Alice");
+        user.setBucket(bucket);
+        return user;
     }
 
     @JdbcEntity(table = "ft_user", keyColumns = {"id"})
@@ -148,6 +175,44 @@ class JdbcObservationRegistryTest {
 
         public void setShadowField(String shadowField) {
             this.shadowField = shadowField;
+        }
+    }
+
+    @TableName("ft_mp_user")
+    @JdbcDynamicTable(property = "bucket")
+    static final class MybatisPlusUser {
+
+        @TableId("user_id")
+        private Long userId;
+
+        @TableField("display_name")
+        private String displayName;
+
+        @TableField(exist = false)
+        private String bucket;
+
+        public Long getUserId() {
+            return userId;
+        }
+
+        public void setUserId(Long userId) {
+            this.userId = userId;
+        }
+
+        public String getDisplayName() {
+            return displayName;
+        }
+
+        public void setDisplayName(String displayName) {
+            this.displayName = displayName;
+        }
+
+        public String getBucket() {
+            return bucket;
+        }
+
+        public void setBucket(String bucket) {
+            this.bucket = bucket;
         }
     }
 

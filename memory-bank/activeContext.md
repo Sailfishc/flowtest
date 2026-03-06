@@ -24,9 +24,14 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Added `MultiDataSourceJdbcObservationExecutor` plus multi-datasource routing in `JdbcFixtureExecutor`.
 - Added Spring Boot property binding for `flowtest.v2.datasource.default-name` and `flowtest.v2.datasource.bindings[*]`.
 - Added Spring Boot starter and TestNG examples for multi-datasource scenarios driven by configuration properties.
-- Added dynamic table name support. Logical tables can now resolve to physical tables like `ft_order_a` / `ft_order_b` from route or entity field values.
-- Added `@JdbcDynamicTable`, `DynamicTableNameResolver`, and registry builder methods such as `.table(...).dynamicByColumn(...)`.
+- Added dynamic table name support. Logical tables can now resolve to physical tables like `ft_order_a` / `ft_order_b` from explicit `TableRouteScope` values or entity properties.
+- Added `TableRouteScope` / `TableRouteValue` so physical table routing is independent from SQL `RouteScope`.
+- Added `@JdbcDynamicTable(property=...)`, `DynamicTableNameResolver`, `DynamicTableRule`, and registry builder methods such as `.table(...).dynamicByKey(...)` and `.entity(...).dynamicByProperty(...)`.
 - Added dynamic-table-aware fixture adapter generation and multi-datasource routing based on the resolved physical table name.
+- Added pluggable ignore-property resolution with built-in support for `@JdbcIgnore`, JPA/Jakarta `@Transient`, Spring Data `@Transient`, and MyBatis-Plus `@TableField(exist = false)`.
+- Added a Spring Boot + TestNG + MyBatis-Plus example that uses `BaseMapper`, `DynamicTableNameInnerInterceptor`, and FlowTest dynamic-table observation against logical table names.
+- `JdbcObservationRegistry.registerEntity(Class<?>)` now resolves entity metadata from MyBatis-Plus annotations (`@TableName`, `@TableId`, `@TableField`) and falls back to conventions when `@JdbcEntity` is absent.
+- Added a second Spring Boot + TestNG example for MyBatis-Plus dynamic tables across multiple datasources.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
@@ -37,11 +42,14 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - `RESTORE_BEFORE_IMAGE` cleanup runs route-aware SQL and is now the recommended policy for watch-only scenarios that mutate existing rows.
 - Datasource selection is now an infrastructure concern, configured once by table name/pattern, not a per-scenario DSL concern.
 - Route scope and datasource routing stay separate: datasource is resolved by table binding first, then route conditions are applied to SQL.
-- Dynamic table resolution is a table-metadata concern: the scenario still uses the logical table name, while runtime resolves the physical table from route or entity values.
-- Dynamic fixture persistence/reload/delete is supported, but fixture-backed observation on dynamic tables should use explicit route-based observation instead of bare `observe.fixture(handle)`.
+- Dynamic table resolution is a table-metadata concern and now has its own `TableRouteScope`; the scenario still uses the logical table name, while runtime resolves the physical table before SQL routing or datasource lookup.
+- Dynamic fixture persistence/reload/delete is supported even when the dynamic property is entity-only and ignored from DB mapping, but fixture-backed observation on dynamic tables should still use explicit `tableRouteScope` rather than bare `observe.fixture(handle)`.
+- MyBatis-Plus integration is currently demonstrated at the example level: entity classes can carry both FlowTest and MyBatis-Plus annotations, while dynamic table execution uses the MyBatis-Plus interceptor and FlowTest independently resolves the same logical table for observation/cleanup.
+- For MyBatis-Plus entities, `@JdbcEntity` is no longer required in common cases; `@JdbcDynamicTable` still remains the explicit hook for FlowTest physical-table resolution.
 
 ## Next Likely Steps
 - Consider transaction-aware `ROLLBACK` support for Spring-managed tests.
 - Add transaction-aware examples and utilities for Spring-managed rollback workflows.
 - Decide whether row-level assertion DSL needs stronger field/path matchers beyond simple column equality.
 - Decide whether datasource routing also needs entity-name bindings in addition to table names and glob patterns.
+- Decide whether runtime should auto-derive `TableRouteScope` from fixture-backed dynamic entities so `observe.fixture(handle)` can work without extra table-route declarations.

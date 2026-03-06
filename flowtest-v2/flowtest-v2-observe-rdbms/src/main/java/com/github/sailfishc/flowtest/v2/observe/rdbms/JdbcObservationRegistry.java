@@ -54,7 +54,7 @@ public final class JdbcObservationRegistry {
     }
 
     public JdbcObservationRegistry registerEntity(Class<?> entityType) {
-        registerEntity(annotatedRegistration(entityType));
+        registerEntity(introspectedRegistration(entityType));
         return this;
     }
 
@@ -71,7 +71,7 @@ public final class JdbcObservationRegistry {
     }
 
     public <T> EntityRegistrationBuilder<T> entity(Class<T> entityType) {
-        JdbcEntityRegistration registration = annotatedRegistration(entityType);
+        JdbcEntityRegistration registration = introspectedRegistration(entityType);
         return new EntityRegistrationBuilder<T>(
             this,
             entityType,
@@ -116,15 +116,11 @@ public final class JdbcObservationRegistry {
         resourcesByName.put(resource.getResourceName(), resource);
     }
 
-    private JdbcEntityRegistration annotatedRegistration(Class<?> entityType) {
-        JdbcEntity jdbcEntity = entityType.getAnnotation(JdbcEntity.class);
-        if (jdbcEntity == null) {
-            throw new IllegalArgumentException("No @JdbcEntity mapping found on " + entityType.getName());
-        }
+    private JdbcEntityRegistration introspectedRegistration(Class<?> entityType) {
         return new JdbcEntityRegistration(
             entityType,
-            hasText(jdbcEntity.resourceName()) ? jdbcEntity.resourceName().trim() : entityType.getName(),
-            TableIdentity.of(jdbcEntity.table(), jdbcEntity.keyColumns()),
+            resolveResourceName(entityType),
+            TableIdentity.of(resolveTableName(entityType), resolveKeyColumns(entityType)),
             detectPropertyColumns(entityType),
             detectIgnoredProperties(entityType),
             dynamicTableRuleOf(entityType)
@@ -151,6 +147,68 @@ public final class JdbcObservationRegistry {
             return jdbcEntity.resourceName().trim();
         }
         return entityType.getName();
+    }
+
+    private String resolveTableName(Class<?> entityType) {
+        JdbcEntity jdbcEntity = entityType.getAnnotation(JdbcEntity.class);
+        if (jdbcEntity != null && hasText(jdbcEntity.table())) {
+            return jdbcEntity.table().trim();
+        }
+
+        String tableName = annotationValue(entityType, "javax.persistence.Table", "name");
+        if (!hasText(tableName)) {
+            tableName = annotationValue(entityType, "jakarta.persistence.Table", "name");
+        }
+        if (!hasText(tableName)) {
+            tableName = annotationValue(entityType, "com.baomidou.mybatisplus.annotation.TableName", "value");
+        }
+        if (hasText(tableName)) {
+            return tableName.trim();
+        }
+
+        return toSnakeCase(entityType.getSimpleName());
+    }
+
+    private String[] resolveKeyColumns(Class<?> entityType) {
+        JdbcEntity jdbcEntity = entityType.getAnnotation(JdbcEntity.class);
+        if (jdbcEntity != null && jdbcEntity.keyColumns().length > 0) {
+            return jdbcEntity.keyColumns();
+        }
+
+        List<String> keyColumns = detectAnnotatedKeyColumns(entityType);
+        if (!keyColumns.isEmpty()) {
+            return keyColumns.toArray(new String[keyColumns.size()]);
+        }
+
+        PropertyDescriptor idProperty = beanProperties(entityType).get("id");
+        if (idProperty != null) {
+            String columnName = detectColumnName(entityType, idProperty);
+            return new String[] { hasText(columnName) ? columnName : "id" };
+        }
+
+        Field idField = findField(entityType, "id");
+        if (idField != null) {
+            String columnName = detectFieldColumnName(idField);
+            return new String[] { hasText(columnName) ? columnName : "id" };
+        }
+
+        throw new IllegalArgumentException("No key column mapping found for " + entityType.getName()
+            + ". Add @JdbcEntity(keyColumns=...), @TableId, or an id property.");
+    }
+
+    private List<String> detectAnnotatedKeyColumns(Class<?> entityType) {
+        List<String> keyColumns = new ArrayList<String>();
+        for (PropertyDescriptor property : beanProperties(entityType).values()) {
+            Field field = findField(entityType, property.getName());
+            if (!hasAnnotation(field, property.getReadMethod(), property.getWriteMethod(), "com.baomidou.mybatisplus.annotation.TableId")
+                && !hasAnnotation(field, property.getReadMethod(), property.getWriteMethod(), "javax.persistence.Id")
+                && !hasAnnotation(field, property.getReadMethod(), property.getWriteMethod(), "jakarta.persistence.Id")) {
+                continue;
+            }
+            String columnName = detectColumnName(entityType, property);
+            keyColumns.add(hasText(columnName) ? columnName : toSnakeCase(property.getName()));
+        }
+        return keyColumns;
     }
 
     private Map<String, String> detectPropertyColumns(Class<?> entityType) {
@@ -202,14 +260,45 @@ public final class JdbcObservationRegistry {
 
     private String detectColumnName(Class<?> entityType, PropertyDescriptor property) {
         Field field = findField(entityType, property.getName());
-        JdbcColumn column = field == null ? null : field.getAnnotation(JdbcColumn.class);
-        if (column == null) {
-            column = findAnnotation(property.getReadMethod(), JdbcColumn.class);
+        String columnName = detectFieldColumnName(field);
+        if (!hasText(columnName)) {
+            JdbcColumn column = findAnnotation(property.getReadMethod(), JdbcColumn.class);
+            if (column == null) {
+                column = findAnnotation(property.getWriteMethod(), JdbcColumn.class);
+            }
+            if (column != null) {
+                columnName = requireText(column.value(), "column value must not be blank");
+            }
         }
-        if (column == null) {
-            column = findAnnotation(property.getWriteMethod(), JdbcColumn.class);
+        if (!hasText(columnName)) {
+            columnName = annotationValue(property.getReadMethod(), "com.baomidou.mybatisplus.annotation.TableField", "value");
         }
-        return column == null ? null : requireText(column.value(), "column value must not be blank");
+        if (!hasText(columnName)) {
+            columnName = annotationValue(property.getWriteMethod(), "com.baomidou.mybatisplus.annotation.TableField", "value");
+        }
+        if (!hasText(columnName)) {
+            columnName = annotationValue(property.getReadMethod(), "com.baomidou.mybatisplus.annotation.TableId", "value");
+        }
+        if (!hasText(columnName)) {
+            columnName = annotationValue(property.getWriteMethod(), "com.baomidou.mybatisplus.annotation.TableId", "value");
+        }
+        return hasText(columnName) ? requireText(columnName, "column value must not be blank") : null;
+    }
+
+    private String detectFieldColumnName(Field field) {
+        if (field == null) {
+            return null;
+        }
+        JdbcColumn jdbcColumn = field.getAnnotation(JdbcColumn.class);
+        if (jdbcColumn != null) {
+            return requireText(jdbcColumn.value(), "column value must not be blank");
+        }
+
+        String columnName = annotationValue(field, "com.baomidou.mybatisplus.annotation.TableField", "value");
+        if (!hasText(columnName)) {
+            columnName = annotationValue(field, "com.baomidou.mybatisplus.annotation.TableId", "value");
+        }
+        return hasText(columnName) ? requireText(columnName, "column value must not be blank") : null;
     }
 
     private Field findField(Class<?> type, String propertyName) {
@@ -231,6 +320,94 @@ public final class JdbcObservationRegistry {
             return null;
         }
         return method.getAnnotation(annotationType);
+    }
+
+    private boolean hasAnnotation(Field field, Method readMethod, Method writeMethod, String annotationClassName) {
+        return hasAnnotation(field, annotationClassName)
+            || hasAnnotation(readMethod, annotationClassName)
+            || hasAnnotation(writeMethod, annotationClassName);
+    }
+
+    private boolean hasAnnotation(Field field, String annotationClassName) {
+        if (field == null) {
+            return false;
+        }
+        return annotationValue(field, annotationClassName, null) != null;
+    }
+
+    private boolean hasAnnotation(Method method, String annotationClassName) {
+        if (method == null) {
+            return false;
+        }
+        return annotationValue(method, annotationClassName, null) != null;
+    }
+
+    private String annotationValue(Class<?> target, String annotationClassName, String attributeName) {
+        try {
+            Class<?> annotationClass = Class.forName(annotationClassName);
+            java.lang.annotation.Annotation annotation =
+                target.getAnnotation((Class<? extends java.lang.annotation.Annotation>) annotationClass);
+            return extractAnnotationValue(annotation, attributeName);
+        } catch (ClassNotFoundException ex) {
+            return null;
+        }
+    }
+
+    private String annotationValue(Field target, String annotationClassName, String attributeName) {
+        try {
+            Class<?> annotationClass = Class.forName(annotationClassName);
+            java.lang.annotation.Annotation annotation =
+                target.getAnnotation((Class<? extends java.lang.annotation.Annotation>) annotationClass);
+            return extractAnnotationValue(annotation, attributeName);
+        } catch (ClassNotFoundException ex) {
+            return null;
+        }
+    }
+
+    private String annotationValue(Method target, String annotationClassName, String attributeName) {
+        if (target == null) {
+            return null;
+        }
+        try {
+            Class<?> annotationClass = Class.forName(annotationClassName);
+            java.lang.annotation.Annotation annotation =
+                target.getAnnotation((Class<? extends java.lang.annotation.Annotation>) annotationClass);
+            return extractAnnotationValue(annotation, attributeName);
+        } catch (ClassNotFoundException ex) {
+            return null;
+        }
+    }
+
+    private String extractAnnotationValue(java.lang.annotation.Annotation annotation, String attributeName) {
+        if (annotation == null) {
+            return null;
+        }
+        if (!hasText(attributeName)) {
+            return "";
+        }
+        try {
+            Object value = annotation.annotationType().getMethod(attributeName).invoke(annotation);
+            return value == null ? null : value.toString();
+        } catch (Exception ex) {
+            throw new IllegalStateException("Failed to read annotation attribute " + attributeName
+                + " from " + annotation.annotationType().getName(), ex);
+        }
+    }
+
+    private String toSnakeCase(String value) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (Character.isUpperCase(c)) {
+                if (i > 0) {
+                    builder.append('_');
+                }
+                builder.append(Character.toLowerCase(c));
+            } else {
+                builder.append(c);
+            }
+        }
+        return builder.toString();
     }
 
     JdbcObservedResource resolve(ObservationSpec observation) {

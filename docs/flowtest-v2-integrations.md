@@ -7,11 +7,15 @@
 Use `FlowTestV2Extension` when you want parameter injection for `ScenarioExecutor`.
 
 ```java
+@JdbcEntity(table = "ft_user", keyColumns = "id")
+public class TestUser {
+}
+
 @RegisterExtension
 static final FlowTestV2Extension FLOW = FlowTestV2Extension.builder()
     .dataSource(dataSource)
+    .registerObservedEntity(TestUser.class)
     .registerObservedTable("ft_order", "id")
-    .registerFixtureAdapter(new OrderAdapter())
     .build();
 
 @Test
@@ -50,6 +54,10 @@ Add `flowtest-v2-spring-boot-starter`. The starter auto-configures:
 - `ScenarioExecutor`
 
 For normal bean-style fixtures, you only need to register entities and observed tables. The starter now derives a default fixture adapter from entity metadata using `camelCase -> snake_case`.
+`registerEntity(Class<?>)` can now resolve metadata from:
+- `@JdbcEntity`
+- MyBatis-Plus `@TableName`, `@TableId`, `@TableField`
+- convention fallback (`CamelCase -> snake_case`, `id` property as key)
 
 You still need to provide business registrations:
 
@@ -84,14 +92,23 @@ Keep a custom `FixtureEntityAdapter` only for special persistence logic such as 
 
 ### Dynamic Table Names
 
-When the logical table name is stable but the physical table changes by routing field, register the logical table once and let FlowTest resolve the physical suffix at runtime.
+When the logical table name is stable but the physical table changes by runtime routing value, register the logical table once and let FlowTest resolve the physical suffix.
+
+`flowtest-v2` now treats dynamic table routing and SQL routing as two separate concerns:
+- `TableRouteScope`: resolves logical table -> physical table
+- `RouteScope`: contributes SQL route predicates or shard conditions
+
+This matters because the value used to pick the physical table does not have to be a real database column.
 
 Entity-based registration can use annotations:
 
 ```java
 @JdbcEntity(table = "ft_order", keyColumns = "id")
-@JdbcDynamicTable(column = "bucket")
+@JdbcDynamicTable(property = "bucket")
 public class OrderEntity {
+
+    @JdbcIgnore
+    private String bucket;
 }
 ```
 
@@ -102,27 +119,56 @@ Table-only observation can use the registry builder:
 JdbcObservationRegistry jdbcObservationRegistry() {
     return new JdbcObservationRegistry()
         .table("ft_order", "id")
-        .dynamicByColumn("bucket")
+        .dynamicByKey("bucket")
         .register();
 }
 ```
 
-Then the scenario still observes the logical table name:
+If only the physical table is dynamic, pass `TableRouteScope` and skip SQL routing:
 
 ```java
-.observe(o -> o.shardedTable("ft_order", RouteScope.of(RouteCondition.eq("bucket", "a"))))
+.observe(o -> o.table("ft_order", TableRouteScope.of("bucket", "a")))
 ```
 
-With the default resolver, FlowTest maps:
+If the table is dynamic and the SQL still needs shard predicates, pass both scopes:
+
+```java
+.observe(o -> o.shardedTable(
+    "ft_order",
+    TableRouteScope.of("bucket", "a"),
+    RouteScope.of(RouteCondition.eq("tenant_id", 100L))
+))
+```
+
+With the default suffix resolver, FlowTest maps:
 - `ft_order` + `bucket = a` -> `ft_order_a`
 - `ft_order` + `bucket = b` -> `ft_order_b`
 
-If you need a different naming rule, use `.dynamicByColumn("bucket", customResolver)`.
+If you need a different naming rule, use `.dynamicByKey("bucket", customResolver)` or `.dynamicByProperty("bucket", customResolver)`.
+
+Built-in ignore support covers:
+- `@JdbcIgnore`
+- `javax.persistence.Transient`
+- `jakarta.persistence.Transient`
+- `org.springframework.data.annotation.Transient`
+- MyBatis-Plus `@TableField(exist = false)`
+
+You can also register custom ignore metadata when your ORM uses a different annotation:
+
+```java
+@Bean
+JdbcObservationRegistry jdbcObservationRegistry() {
+    return new JdbcObservationRegistry()
+        .addIgnorePropertyResolver(JdbcIgnorePropertyResolvers.annotation("com.example.orm.IgnoreField"))
+        .registerEntity(OrderEntity.class);
+}
+```
 
 Current constraint:
-- dynamic table observation must have an explicit route scope
+- fixture-backed observation does not infer `TableRouteScope` from `observe.fixture(handle)` yet
 - fixture persistence/reload/delete supports dynamic table resolution
-- fixture-backed observation should use `shardedEntity(...)` or `table(..., route)` rather than `fixture(handle)` when the entity itself is stored in a dynamic table
+- dynamic table resolution can use entity-only properties that are ignored from database mapping
+- use `entity(..., tableRouteScope)` or `shardedEntity(..., tableRouteScope, routeScope)` when the entity itself is stored in a dynamic table
 
 ### Multi-DataSource Routing
 
@@ -158,6 +204,7 @@ Once routing is configured, the test DSL stays unchanged:
 ```
 
 The framework resolves `ft_user` and `ft_order` to the correct `DataSource` automatically.
+Dynamic tables are resolved before datasource lookup, so a logical table such as `ft_order_dynamic` can still route to different datasource bindings after becoming `ft_order_dynamic_a` or `ft_order_dynamic_b`.
 
 ## Manual JDBC Wiring
 
@@ -205,6 +252,38 @@ The example uses:
 - TestNG listener-based executor injection
 - Spring Boot auto-configured `ScenarioExecutor`
 - row-level assertion for the inserted order row
+
+### Complete Spring Boot + TestNG + MyBatis-Plus Dynamic Table Example
+
+Use `flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java`
+when you need to combine:
+- Spring Boot
+- TestNG
+- MyBatis-Plus mapper execution
+- dynamic physical table names
+
+That example shows:
+- `BaseMapper`-based insert through MyBatis-Plus
+- `DynamicTableNameInnerInterceptor` selecting `ft_mp_order_dynamic_a` / `ft_mp_order_dynamic_b`
+- `@TableField(exist = false)` on the dynamic bucket property
+- `registerEntity(DynamicOrderEntity.class)` without `@JdbcEntity`
+- FlowTest observing the logical table `ft_mp_order_dynamic`
+- `TableRouteScope` and `RouteScope` used together in the same scenario
+- cleanup only affecting the resolved physical table
+
+### Complete Spring Boot + TestNG + MyBatis-Plus Dynamic Table Multi-DataSource Example
+
+Use `flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java`
+when you need one scenario to touch:
+- a fixture-backed table on one datasource
+- a MyBatis-Plus dynamic table on another datasource
+
+That example shows:
+- `ft_user` fixture data routed to `accountDs`
+- `ft_mp_order_dynamic_*` routed to `orderDs` through datasource pattern binding
+- MyBatis-Plus using the primary `orderDs`
+- FlowTest resolving the physical table before datasource lookup
+- one TestNG scenario asserting cross-datasource update + insert cleanup
 
 ### Complete Spring Boot + TestNG Multi-DataSource Example
 

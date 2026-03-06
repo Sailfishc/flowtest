@@ -18,8 +18,13 @@
 - Manual `JdbcFixtureExecutor` wiring now also accepts `JdbcObservationRegistry` directly and auto-generates fixture adapters from it.
 - Spring Boot starter now supports multi-datasource routing through `flowtest.v2.datasource.default-name` and `flowtest.v2.datasource.bindings[*]`.
 - JDBC observation and fixture execution can now route by table name across multiple `DataSource` beans using exact bindings or glob patterns.
-- JDBC observation and fixture execution now support dynamic table names, with logical resources resolving to physical tables by route/entity field value.
-- `JdbcObservationRegistry` now supports `.table(...).dynamicByColumn(...)` and annotation-based dynamic entity mapping via `@JdbcDynamicTable`.
+- JDBC observation and fixture execution now support dynamic table names, with logical resources resolving to physical tables by explicit `TableRouteScope` values or entity properties.
+- `JdbcObservationRegistry` now supports `.table(...).dynamicByKey(...)`, `.entity(...).dynamicByProperty(...)`, and annotation-based dynamic entity mapping via `@JdbcDynamicTable(property = ...)`.
+- Dynamic table routing and SQL routing are now modeled separately: `TableRouteScope` resolves the physical table, while `RouteScope` still drives SQL shard predicates.
+- Ignore metadata is now extensible through `JdbcIgnorePropertyResolver`, with built-in compatibility for `@JdbcIgnore`, JPA/Jakarta `@Transient`, Spring Data `@Transient`, and MyBatis-Plus `@TableField(exist = false)`.
+- `flowtest-v2-testng` now includes a Spring Boot + TestNG + MyBatis-Plus dynamic-table example using `BaseMapper` and `DynamicTableNameInnerInterceptor`.
+- `JdbcObservationRegistry.registerEntity(Class<?>)` now supports MyBatis-Plus metadata directly, including table name, key column, explicit field mapping, and ignored transient fields.
+- `flowtest-v2-testng` now also includes a Spring Boot + TestNG + MyBatis-Plus + dynamic-table + multi-datasource example.
 - TestNG module now contains a second complete example for Spring Boot + TestNG + multi-datasource routing.
 - H2-backed case module proves act-only, mixed fixture/watch-only, and watch-only restore flows.
 - Docs now include a dedicated `flowtest-v2` integrations guide and point to the Spring Boot + TestNG example file.
@@ -38,5 +43,5 @@
 - Simple JDBC fixtures can now use convention-based adapter generation, but special persistence behavior still requires a custom adapter.
 - Sharded observation requires route scope before action execution.
 - Multi-datasource routing currently binds by table name and glob pattern; entity-name bindings are not implemented.
-- Dynamic table observation currently requires explicit route scope. Bare fixture-backed observation does not infer dynamic table routes automatically.
+- Bare fixture-backed observation does not infer dynamic table routes automatically; dynamic entities should currently be observed with explicit `TableRouteScope`.
 - `RESTORE_BEFORE_IMAGE` assumes rows are fully writable from snapshot columns and does not yet handle database-generated or non-updatable columns specially.
