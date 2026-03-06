@@ -24,11 +24,14 @@
 - 动态表名
 - 多数据源
 - MyBatis-Plus 元数据识别
+- **自动数据填充**：fixture 实例在 trait 应用前自动填入随机数据（基于 Instancio）
+- **Fixture 实体自动注册**：`given(g -> g.persist(...))` 声明的实体类会自动注册到 JDBC 元数据，无需手动调用 `registerEntity`
+- **动态表路由自动推导**：`observe.fixture(handle)` 可自动从 fixture 实例的动态表属性推导 `TableRouteScope`
 
 当前限制：
 
 - `CleanupPolicy.ROLLBACK` 需要外部事务边界，默认不要使用
-- 动态表场景下，`observe.fixture(handle)` 还不会自动推导 `TableRouteScope`
+- 自动推导 `TableRouteScope` 的前提是 trait 已设置动态表路由属性（如 `bucket`），否则需要手动 `.dynamicTableBy(...)`
 
 推荐默认 cleanup：
 
@@ -186,21 +189,22 @@
 
 ## 4. 第二步：注册实体和表
 
-`v2` 不会扫描整个数据库。你必须显式告诉它：
+`v2` 不会扫描整个数据库，但对于 **fixture 实体**（在 `given(...)` 中声明的实体），框架会在运行时自动注册 JDBC 元数据并生成默认的 fixture adapter。
 
-- 哪个实体如何映射
-- 哪些表需要观测
+所以最简场景下你不需要手动注册 fixture 用到的实体类。
 
-如果你走的是 Spring Boot starter，starter 只负责自动装配这些 Bean：
+对于 **watch-only 表**（只在 `watch(...)` 中观测但不造数的表），你仍然需要显式注册。
+
+如果你走的是 Spring Boot starter，starter 负责自动装配这些 Bean：
 
 - `FlowTestDataSourceRegistry`
 - `FixtureAdapterRegistry`
 - `JdbcObservationRegistry`
+- `FixtureMaterializer` — 默认使用 Instancio 自动填充
+- `DataFiller` — 默认 `InstancioDataFiller`
 - `FixtureExecutor`
 - `ObservationExecutor`
 - `ScenarioExecutor`
-
-它不会替你猜业务实体和业务表，所以 `JdbcObservationRegistry` 仍然需要你自己提供。
 
 ### 4.1 普通 JavaBean
 
@@ -455,6 +459,27 @@ public class DynamicOrderEntity {
     .route("tenant_id", 100L))
 ```
 
+### 8.3 Fixture-backed 动态表自动推导
+
+如果 fixture 实体使用了 `@JdbcDynamicTable`，并且 trait 设置了路由属性值，框架会自动推导 `TableRouteScope`。你不需要在 `watch` 里重复写 `.dynamicTableBy(...)`：
+
+```java
+FixtureHandle<DynamicOrderEntity> order = FixtureHandle.named(DynamicOrderEntity.class, "order");
+
+FlowTestV2.scenario("auto-derive-dynamic-table")
+    .given(g -> g.persist(order,
+        FixtureTrait.of(v -> v.setBucket("a")),  // 设置路由属性
+        FixtureTrait.of(v -> v.setStatus("CREATED"))))
+    .watch(w -> w.fixture(order))  // 自动推导 TableRouteScope
+    .when(() -> service.process(order))
+    .verify(ctx -> {
+        ctx.success();
+    })
+    .run();
+```
+
+前提：trait 必须设置动态表路由属性。如果路由属性为 null，框架会抛出明确错误提示。
+
 完整示例：
 
 - [FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
@@ -537,9 +562,22 @@ flowtest:
 
 只有在你自己已经提供外部事务边界时才成立。普通场景不要作为默认选项。
 
-## 11. Traits 怎么用
+## 11. 自动数据填充
 
-`FixtureTrait` 用来描述差异化测试数据，不用写大而全的 builder。
+`v2` 默认使用 Instancio 自动填充 fixture 实体的字段。你只需要通过 trait 设置业务相关的字段，其他字段会自动生成随机数据。
+
+自动填充会排除以下字段：
+- ID 字段（`id`、`@Id`、`@TableId`）
+- 忽略字段（`@JdbcIgnore`、JPA/Jakarta/Spring `@Transient`、`@TableField(exist = false)`）
+- 动态表路由属性（`@JdbcDynamicTable(property = "...")` 指定的字段）
+
+如果需要关闭自动填充：
+- Spring Boot：设置 `flowtest.v2.data-filler=none`
+- JUnit 5 builder：`.dataFiller(NoOpDataFiller.INSTANCE)`
+
+## 12. Traits 怎么用
+
+`FixtureTrait` 用来描述差异化测试数据，不用写大而全的 builder。因为字段已经被自动填充，trait 只需要覆盖业务语义相关的字段。
 
 ```java
 private FixtureTrait<TestUser> tenantTrait(final Long tenantId) {
@@ -762,7 +800,7 @@ public final class BelongsToUserTrait implements FixtureTrait<TestOrder> {
 5. 复杂依赖关系通过 `TraitContext` 处理，不要在测试里手工串字段。
 6. 一个测试里如果开始反复出现 3 个以上相同 trait 组合，就应该抽成公共 trait。
 
-## 12. 常见问题
+## 13. 常见问题
 
 ### 12.1 为什么必须写 `observe`
 
@@ -802,7 +840,7 @@ public final class BelongsToUserTrait implements FixtureTrait<TestOrder> {
 private String bucket;
 ```
 
-## 13. 示例索引
+## 14. 示例索引
 
 建议直接从这些测试文件抄起：
 
@@ -815,7 +853,7 @@ private String bucket;
 - Spring Boot + TestNG + MyBatis-Plus + 动态表 + 多数据源：
   - [FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
 
-## 14. 下一步阅读
+## 15. 下一步阅读
 
 - 架构说明：[flowtest-v2-architecture.md](/Users/zhangcheng/CodeProjects/flowtest/docs/flowtest-v2-architecture.md)
 - 按集成方式查细节：[flowtest-v2-integrations.md](/Users/zhangcheng/CodeProjects/flowtest/docs/flowtest-v2-integrations.md)

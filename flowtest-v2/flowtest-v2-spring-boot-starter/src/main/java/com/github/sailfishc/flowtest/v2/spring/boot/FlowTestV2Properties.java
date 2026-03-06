@@ -12,6 +12,7 @@ import java.util.List;
 public class FlowTestV2Properties {
 
     private boolean enabled = true;
+    private String dataFiller = "instancio";
     private final DatasourceProperties datasource = new DatasourceProperties();
 
     public boolean isEnabled() {
@@ -20,6 +21,14 @@ public class FlowTestV2Properties {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public String getDataFiller() {
+        return dataFiller;
+    }
+
+    public void setDataFiller(String dataFiller) {
+        this.dataFiller = dataFiller;
     }
 
     public DatasourceProperties getDatasource() {

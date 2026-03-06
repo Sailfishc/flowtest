@@ -9,9 +9,13 @@ import com.github.sailfishc.flowtest.v2.fixture.FixtureExecution;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
 import com.github.sailfishc.flowtest.v2.fixture.NoOpFixtureExecutor;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
+import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
+import com.github.sailfishc.flowtest.v2.spec.FixtureValueResolver;
 import com.github.sailfishc.flowtest.v2.spec.ObservationDiff;
 import com.github.sailfishc.flowtest.v2.spec.ObservationExecutor;
+import com.github.sailfishc.flowtest.v2.spec.ObservationPreparationSupport;
 import com.github.sailfishc.flowtest.v2.spec.ObservationSnapshot;
+import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
 import com.github.sailfishc.flowtest.v2.spec.ResourceChange;
 
 import java.util.List;
@@ -42,6 +46,11 @@ public final class ScenarioExecutor {
     public <R> ScenarioExecutionResult<R> execute(CompiledScenario<R> compiledScenario) throws Exception {
         ScenarioDefinition<R> definition = compiledScenario.getDefinition();
         FixtureExecution fixtureExecution = fixtureExecutor.prepare(definition.getFixtures());
+
+        // Prepare effective observations: enrich fixture-backed specs with derived metadata
+        List<ObservationSpec> effectiveObservations = prepareObservations(
+            definition.getObservations(), fixtureExecution);
+
         ObservationSnapshot beforeSnapshot = ObservationSnapshot.empty();
         ObservationSnapshot afterSnapshot = ObservationSnapshot.empty();
         ObservationDiff diff = ObservationDiff.empty();
@@ -50,13 +59,13 @@ public final class ScenarioExecutor {
         Throwable primaryFailure = null;
 
         try {
-            beforeSnapshot = observationExecutor.capture(definition.getObservations());
+            beforeSnapshot = observationExecutor.capture(effectiveObservations);
             try {
                 result = definition.getAction().get();
             } catch (Exception ex) {
                 failure = ex;
             }
-            afterSnapshot = observationExecutor.capture(definition.getObservations());
+            afterSnapshot = observationExecutor.capture(effectiveObservations);
             diff = ObservationDiff.between(beforeSnapshot, afterSnapshot);
             verifyExpectations(definition.getExpectations(), definition.getVerifications(), fixtureExecution, result, failure, diff);
             if (failure != null
@@ -67,7 +76,7 @@ public final class ScenarioExecutor {
         } catch (Throwable ex) {
             primaryFailure = ex;
         } finally {
-            Throwable cleanupFailure = cleanup(definition.getCleanupPolicy(), definition, fixtureExecution, diff);
+            Throwable cleanupFailure = cleanup(definition.getCleanupPolicy(), effectiveObservations, fixtureExecution, diff);
             if (cleanupFailure != null) {
                 if (primaryFailure == null) {
                     primaryFailure = cleanupFailure;
@@ -81,6 +90,26 @@ public final class ScenarioExecutor {
             rethrow(primaryFailure);
         }
         return new ScenarioExecutionResult<R>(definition.getName(), result, failure, diff);
+    }
+
+    /**
+     * Enriches observation specs using materialized fixture data if the observation
+     * executor supports it. This allows fixture-backed dynamic-table observations
+     * to auto-derive their {@link com.github.sailfishc.flowtest.v2.spec.TableRouteScope}.
+     */
+    private List<ObservationSpec> prepareObservations(List<ObservationSpec> observations,
+                                                      final FixtureExecution fixtureExecution) {
+        if (!(observationExecutor instanceof ObservationPreparationSupport)) {
+            return observations;
+        }
+        FixtureValueResolver resolver = new FixtureValueResolver() {
+            @Override
+            public <T> T resolve(FixtureHandle<T> handle) {
+                return fixtureExecution.resolve(handle);
+            }
+        };
+        return ((ObservationPreparationSupport) observationExecutor)
+            .prepareObservations(observations, resolver);
     }
 
     private <R> void verifyExpectations(ExpectationSet<R> expectations,
@@ -159,17 +188,17 @@ public final class ScenarioExecutor {
         ((com.github.sailfishc.flowtest.v2.assertion.FixtureAssertion) expectation.getAssertion()).verify(value);
     }
 
-    private <R> Throwable cleanup(CleanupPolicy cleanupPolicy,
-                                  ScenarioDefinition<R> definition,
-                                  FixtureExecution fixtureExecution,
-                                  ObservationDiff diff) {
+    private Throwable cleanup(CleanupPolicy cleanupPolicy,
+                              List<ObservationSpec> effectiveObservations,
+                              FixtureExecution fixtureExecution,
+                              ObservationDiff diff) {
         try {
             if (cleanupPolicy == CleanupPolicy.ROLLBACK) {
                 throw new UnsupportedOperationException(
                     "CleanupPolicy.ROLLBACK is not yet implemented. "
                     + "Use DELETE_INSERTED, RESTORE_BEFORE_IMAGE, or manage transactions externally.");
             }
-            observationExecutor.cleanup(definition.getObservations(), diff, cleanupPolicy);
+            observationExecutor.cleanup(effectiveObservations, diff, cleanupPolicy);
             fixtureExecution.cleanup();
             return null;
         } catch (Throwable ex) {

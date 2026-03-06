@@ -119,6 +119,23 @@ public final class ObservationSpec {
         return fixtureHandle;
     }
 
+    /**
+     * Returns a copy of this observation with the given table route scope.
+     * Used for runtime enrichment when fixture-backed dynamic table routes are derived.
+     */
+    public ObservationSpec withTableRouteScope(TableRouteScope scope) {
+        return new ObservationSpec(
+            this.resourceKind,
+            this.observationMode,
+            this.resourceName,
+            this.resourceType,
+            scope,
+            this.routeScope,
+            this.routeRequired,
+            this.fixtureHandle
+        );
+    }
+
     private static String requireText(String text, String message) {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException(message);

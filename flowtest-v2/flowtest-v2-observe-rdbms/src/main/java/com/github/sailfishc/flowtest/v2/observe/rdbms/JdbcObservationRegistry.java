@@ -101,6 +101,24 @@ public final class JdbcObservationRegistry {
         return Collections.unmodifiableMap(entityRegistrations);
     }
 
+    /**
+     * Registers the given entity type if it has not been registered yet.
+     * Uses automatic metadata introspection (annotations + convention).
+     * This is idempotent and thread-safe — calling it for an already-registered type is a no-op.
+     *
+     * @param entityType the entity class to register
+     * @return the registration (existing or newly created)
+     */
+    public synchronized JdbcEntityRegistration registerEntityIfAbsent(Class<?> entityType) {
+        JdbcEntityRegistration existing = entityRegistrations.get(entityType);
+        if (existing != null) {
+            return existing;
+        }
+        JdbcEntityRegistration registration = introspectedRegistration(entityType);
+        registerEntity(registration);
+        return registration;
+    }
+
     private void registerEntity(JdbcEntityRegistration registration) {
         JdbcObservedResource resource = new JdbcObservedResource(
             registration.getResourceName(),
@@ -423,7 +441,9 @@ public final class JdbcObservationRegistry {
         } else if (observation.getObservationMode() == ObservationMode.FIXTURE_BACKED) {
             throw new IllegalArgumentException("Dynamic table observation for fixture-backed resource "
                 + observation.getResourceName()
-                + " requires explicit table route; use observe.shardedEntity(..., tableRoute, route) or observe.table(..., tableRoute, route)");
+                + " requires a table route scope. Either use .dynamicTableBy(...) in the DSL,"
+                + " or ensure the fixture entity's dynamic table property is set via traits"
+                + " so the framework can auto-derive it.");
         } else {
             physicalTableName = resource.getDynamicTableRule().resolveTableName(resource.getIdentity().getTableName(), observation.getRouteScope());
         }

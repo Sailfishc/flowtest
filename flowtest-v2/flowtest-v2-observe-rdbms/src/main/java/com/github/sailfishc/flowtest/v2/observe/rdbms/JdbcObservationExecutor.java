@@ -1,8 +1,10 @@
 package com.github.sailfishc.flowtest.v2.observe.rdbms;
 
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
+import com.github.sailfishc.flowtest.v2.spec.FixtureValueResolver;
 import com.github.sailfishc.flowtest.v2.spec.ObservationDiff;
 import com.github.sailfishc.flowtest.v2.spec.ObservationExecutor;
+import com.github.sailfishc.flowtest.v2.spec.ObservationPreparationSupport;
 import com.github.sailfishc.flowtest.v2.spec.ObservationSnapshot;
 import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
 import com.github.sailfishc.flowtest.v2.spec.ResourceChange;
@@ -28,7 +30,7 @@ import java.util.Map;
 /**
  * JDBC observation executor backed by explicit table registrations.
  */
-public final class JdbcObservationExecutor implements ObservationExecutor {
+public final class JdbcObservationExecutor implements ObservationExecutor, ObservationPreparationSupport {
 
     private final DataSource dataSource;
     private final JdbcObservationRegistry registry;
@@ -45,6 +47,12 @@ public final class JdbcObservationExecutor implements ObservationExecutor {
             snapshots.add(captureResource(observation));
         }
         return new ObservationSnapshot(snapshots);
+    }
+
+    @Override
+    public List<ObservationSpec> prepareObservations(List<ObservationSpec> observations,
+                                                     FixtureValueResolver fixtures) {
+        return ObservationEnricher.enrichFixtureObservations(observations, fixtures, registry);
     }
 
     @Override

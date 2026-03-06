@@ -1,5 +1,6 @@
 package com.github.sailfishc.flowtest.v2.fixture.jdbc;
 
+import com.github.sailfishc.flowtest.v2.fixture.DataFiller;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecution;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureMaterializer;
@@ -18,6 +19,11 @@ import java.util.Map;
 
 /**
  * JDBC-backed fixture executor with pluggable entity adapters.
+ *
+ * <p>Supports automatic entity registration and lazy adapter creation:
+ * when a fixture entity class is not yet registered in {@link JdbcObservationRegistry},
+ * it will be auto-registered via metadata introspection, and a generic JDBC adapter
+ * will be created on-demand.</p>
  */
 public final class JdbcFixtureExecutor implements FixtureExecutor {
 
@@ -28,11 +34,13 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
     private final JdbcObservationRegistry observationRegistry;
 
     public JdbcFixtureExecutor(DataSource dataSource, JdbcObservationRegistry observationRegistry) {
-        this(dataSource, JdbcFixtureAdapters.fromObservationRegistry(observationRegistry));
+        this(dataSource, null, JdbcFixtureAdapters.fromObservationRegistry(observationRegistry),
+             new FixtureMaterializer(), observationRegistry);
     }
 
     public JdbcFixtureExecutor(FlowTestDataSourceRegistry dataSourceRegistry, JdbcObservationRegistry observationRegistry) {
-        this(dataSourceRegistry, JdbcFixtureAdapters.fromObservationRegistry(observationRegistry), observationRegistry);
+        this(null, dataSourceRegistry, JdbcFixtureAdapters.fromObservationRegistry(observationRegistry),
+             new FixtureMaterializer(), observationRegistry);
     }
 
     public JdbcFixtureExecutor(DataSource dataSource, FixtureAdapterRegistry adapterRegistry) {
@@ -57,6 +65,20 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
         this(dataSource, null, adapterRegistry, materializer, null);
     }
 
+    public JdbcFixtureExecutor(DataSource dataSource,
+                               FixtureAdapterRegistry adapterRegistry,
+                               FixtureMaterializer materializer,
+                               JdbcObservationRegistry observationRegistry) {
+        this(dataSource, null, adapterRegistry, materializer, observationRegistry);
+    }
+
+    public JdbcFixtureExecutor(FlowTestDataSourceRegistry dataSourceRegistry,
+                               FixtureAdapterRegistry adapterRegistry,
+                               FixtureMaterializer materializer,
+                               JdbcObservationRegistry observationRegistry) {
+        this(null, dataSourceRegistry, JdbcFixtureAdapters.merge(adapterRegistry, observationRegistry), materializer, observationRegistry);
+    }
+
     private JdbcFixtureExecutor(DataSource dataSource,
                                 FlowTestDataSourceRegistry dataSourceRegistry,
                                 FixtureAdapterRegistry adapterRegistry,
@@ -71,11 +93,33 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
 
     @Override
     public FixtureExecution prepare(List<FixtureSpec<?>> fixtures) throws Exception {
+        // Auto-register fixture entity types that are not yet registered
+        autoRegisterFixtureEntities(fixtures);
+
         Map<FixtureHandle<?>, Object> resolved = materializer.materialize(fixtures);
         for (FixtureSpec<?> fixture : fixtures) {
             insertFixture(fixture, resolved.get(fixture.getHandle()));
         }
         return new JdbcFixtureExecution(dataSource, dataSourceRegistry, adapterRegistry, observationRegistry, fixtures, resolved);
+    }
+
+    /**
+     * Auto-registers fixture entity types in the observation registry and creates
+     * generic adapters for any entity types that don't already have a custom adapter.
+     * Custom adapters are always authoritative — auto-registration only applies when
+     * no adapter exists yet.
+     */
+    private void autoRegisterFixtureEntities(List<FixtureSpec<?>> fixtures) {
+        if (observationRegistry == null) {
+            return;
+        }
+        for (FixtureSpec<?> fixture : fixtures) {
+            Class<?> entityType = fixture.getEntityType();
+            if (!adapterRegistry.hasAdapter(entityType)) {
+                JdbcEntityRegistration registration = observationRegistry.registerEntityIfAbsent(entityType);
+                adapterRegistry.register(GenericJdbcFixtureEntityAdapter.of(registration));
+            }
+        }
     }
 
     private <T> void insertFixture(FixtureSpec<T> fixture, Object value) throws Exception {

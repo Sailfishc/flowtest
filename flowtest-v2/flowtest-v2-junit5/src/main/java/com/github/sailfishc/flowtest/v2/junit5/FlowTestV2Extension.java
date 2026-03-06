@@ -1,6 +1,10 @@
 package com.github.sailfishc.flowtest.v2.junit5;
 
+import com.github.sailfishc.flowtest.v2.fixture.DataFiller;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
+import com.github.sailfishc.flowtest.v2.fixture.FixtureMaterializer;
+import com.github.sailfishc.flowtest.v2.fixture.InstancioDataFiller;
+import com.github.sailfishc.flowtest.v2.fixture.NoOpDataFiller;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.FixtureAdapterRegistry;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.FixtureEntityAdapter;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.JdbcFixtureExecutor;
@@ -162,6 +166,7 @@ public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachC
         private DataSource dataSource;
         private JdbcObservationRegistry observationRegistry;
         private FixtureAdapterRegistry fixtureAdapterRegistry;
+        private DataFiller dataFiller;
 
         private Builder() {
         }
@@ -198,6 +203,16 @@ public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachC
 
         public Builder fixtureAdapterRegistry(FixtureAdapterRegistry fixtureAdapterRegistry) {
             this.fixtureAdapterRegistry = fixtureAdapterRegistry;
+            return this;
+        }
+
+        /**
+         * Sets the data filler for auto-filling fixture entities.
+         * If not set, defaults to {@link InstancioDataFiller} when Instancio is on the classpath,
+         * or {@link NoOpDataFiller} otherwise.
+         */
+        public Builder dataFiller(DataFiller dataFiller) {
+            this.dataFiller = dataFiller;
             return this;
         }
 
@@ -261,11 +276,24 @@ public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachC
                 public ScenarioExecutor create() {
                     FixtureExecutor resolvedFixtureExecutor = fixtureExecutor != null
                         ? fixtureExecutor
-                        : new JdbcFixtureExecutor(dataSource, fixtureAdapters(), registry());
+                        : new JdbcFixtureExecutor(dataSource, fixtureAdapters(),
+                              new FixtureMaterializer(resolveDataFiller()), registry());
                     ObservationExecutor resolvedObservationExecutor = new JdbcObservationExecutor(dataSource, registry());
                     return new ScenarioExecutor(resolvedFixtureExecutor, resolvedObservationExecutor);
                 }
             };
+        }
+
+        private DataFiller resolveDataFiller() {
+            if (dataFiller != null) {
+                return dataFiller;
+            }
+            try {
+                Class.forName("org.instancio.Instancio");
+                return new InstancioDataFiller();
+            } catch (ClassNotFoundException e) {
+                return NoOpDataFiller.INSTANCE;
+            }
         }
 
         private JdbcObservationRegistry registry() {

@@ -1,5 +1,7 @@
 package com.github.sailfishc.flowtest.v2.observe.rdbms;
 
+import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
+
 import java.beans.BeanInfo;
 import java.beans.IntrospectionException;
 import java.beans.Introspector;
@@ -87,6 +89,37 @@ public final class JdbcEntityRegistration {
             return dynamicTableRule.resolveTableName(identity.getTableName(), readMethod.invoke(entity));
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to resolve dynamic table name for " + entityType.getName(), ex);
+        }
+    }
+
+    /**
+     * Derives a {@link TableRouteScope} from the given entity instance's dynamic table property.
+     * Returns {@code null} if this registration is not a dynamic table or the property value is null.
+     *
+     * @param entity the materialized entity instance
+     * @return the derived table route scope, or null
+     */
+    public TableRouteScope deriveTableRouteScope(Object entity) {
+        if (dynamicTableRule == null || entity == null) {
+            return null;
+        }
+        PropertyDescriptor descriptor = resolveDynamicProperty(entityType, dynamicTableRule.getPropertyName());
+        if (descriptor == null) {
+            return null;
+        }
+        try {
+            Method readMethod = descriptor.getReadMethod();
+            readMethod.setAccessible(true);
+            Object value = readMethod.invoke(entity);
+            if (value == null) {
+                return null;
+            }
+            String routeKey = dynamicTableRule.getTableRouteKey();
+            return TableRouteScope.of(routeKey, value);
+        } catch (Exception ex) {
+            throw new IllegalStateException(
+                "Failed to derive table route scope from " + entityType.getName()
+                    + "." + dynamicTableRule.getPropertyName(), ex);
         }
     }
 

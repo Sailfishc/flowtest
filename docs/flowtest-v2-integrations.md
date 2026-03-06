@@ -68,6 +68,10 @@ Add `flowtest-v2-spring-boot-starter`. The starter auto-configures:
 - `ScenarioExecutor`
 
 For normal bean-style fixtures, you only need to register entities and observed tables. The starter now derives a default fixture adapter from entity metadata using `camelCase -> snake_case`.
+
+**Auto data filling:** The starter automatically configures `InstancioDataFiller` so fixture entities are pre-filled with random data before traits are applied. Set `flowtest.v2.data-filler=none` to disable.
+
+**Auto fixture registration:** Fixture entities declared in `given(g -> g.persist(...))` are automatically registered in `JdbcObservationRegistry` if not already registered, so you only need to manually register watch-only tables/entities.
 `registerEntity(Class<?>)` can now resolve metadata from:
 - `@JdbcEntity`
 - MyBatis-Plus `@TableName`, `@TableId`, `@TableField`
@@ -178,8 +182,8 @@ JdbcObservationRegistry jdbcObservationRegistry() {
 }
 ```
 
-Current constraint:
-- fixture-backed observation does not infer `TableRouteScope` from `observe.fixture(handle)` yet
+Current behavior:
+- fixture-backed observation **automatically infers** `TableRouteScope` from the materialized fixture instance when the entity uses `@JdbcDynamicTable` and the routing property is set via traits
 - fixture persistence/reload/delete supports dynamic table resolution
 - dynamic table resolution can use entity-only properties that are ignored from database mapping
 - use `entity(..., tableRouteScope)` or `shardedEntity(..., tableRouteScope, routeScope)` when the entity itself is stored in a dynamic table

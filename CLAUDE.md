@@ -170,4 +170,4 @@ Convert `LocalDateTime` to `java.sql.Timestamp` before inserting (handled by `Jd
 `Changes.setTables(String...)` doesn't exist — convert table names to `Table` objects first.
 
 ### Java 8 Compatibility
-This project targets Java 8. EasyRandom 4.3.0 and Instancio 3.7.1 are the last versions supporting Java 8. Do not upgrade these dependencies beyond these versions.
+This project targets Java 8. EasyRandom 4.3.0 and Instancio 5.5.1 are the last versions supporting Java 8 (Instancio 6.0+ requires Java 17). Do not upgrade these dependencies beyond these versions.

@@ -27,6 +27,11 @@
             <artifactId>flowtest-v2-observe-rdbms</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.instancio</groupId>
+            <artifactId>instancio-core</artifactId>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <scope>test</scope>

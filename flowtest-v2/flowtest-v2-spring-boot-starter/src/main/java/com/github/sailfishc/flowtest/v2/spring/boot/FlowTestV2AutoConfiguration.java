@@ -1,6 +1,10 @@
 package com.github.sailfishc.flowtest.v2.spring.boot;
 
+import com.github.sailfishc.flowtest.v2.fixture.DataFiller;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
+import com.github.sailfishc.flowtest.v2.fixture.FixtureMaterializer;
+import com.github.sailfishc.flowtest.v2.fixture.InstancioDataFiller;
+import com.github.sailfishc.flowtest.v2.fixture.NoOpDataFiller;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.FixtureAdapterRegistry;
 import com.github.sailfishc.flowtest.v2.fixture.jdbc.JdbcFixtureExecutor;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.FlowTestDataSourceRegistry;
@@ -20,12 +24,42 @@ import java.util.Map;
 
 /**
  * Auto-configuration for the FlowTest V2 JDBC integration path.
+ *
+ * <p>Provides auto data filling via Instancio by default. Set
+ * {@code flowtest.v2.data-filler=none} to disable auto-filling.</p>
  */
 @Configuration
 @ConditionalOnClass({ScenarioExecutor.class, DataSource.class})
 @EnableConfigurationProperties(FlowTestV2Properties.class)
 @ConditionalOnProperty(prefix = "flowtest.v2", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class FlowTestV2AutoConfiguration {
+
+    @Bean
+    @ConditionalOnMissingBean(DataFiller.class)
+    @ConditionalOnClass(name = "org.instancio.Instancio")
+    @ConditionalOnProperty(prefix = "flowtest.v2", name = "data-filler", havingValue = "none", matchIfMissing = false)
+    public DataFiller flowTestV2NoOpDataFiller() {
+        return NoOpDataFiller.INSTANCE;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DataFiller.class)
+    @ConditionalOnClass(name = "org.instancio.Instancio")
+    public DataFiller flowTestV2InstancioDataFiller() {
+        return new InstancioDataFiller();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(DataFiller.class)
+    public DataFiller flowTestV2FallbackDataFiller() {
+        return NoOpDataFiller.INSTANCE;
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public FixtureMaterializer flowTestV2FixtureMaterializer(DataFiller dataFiller) {
+        return new FixtureMaterializer(dataFiller);
+    }
 
     @Bean
     @ConditionalOnMissingBean
@@ -43,8 +77,9 @@ public class FlowTestV2AutoConfiguration {
     @ConditionalOnMissingBean(FixtureExecutor.class)
     public FixtureExecutor flowTestV2FixtureExecutor(FlowTestDataSourceRegistry dataSourceRegistry,
                                                      FixtureAdapterRegistry fixtureAdapterRegistry,
+                                                     FixtureMaterializer fixtureMaterializer,
                                                      JdbcObservationRegistry observationRegistry) {
-        return new JdbcFixtureExecutor(dataSourceRegistry, fixtureAdapterRegistry, observationRegistry);
+        return new JdbcFixtureExecutor(dataSourceRegistry, fixtureAdapterRegistry, fixtureMaterializer, observationRegistry);
     }
 
     @Bean
