@@ -58,8 +58,10 @@ public final class ScenarioExecutor {
             }
             afterSnapshot = observationExecutor.capture(definition.getObservations());
             diff = ObservationDiff.between(beforeSnapshot, afterSnapshot);
-            verifyExpectations(definition.getExpectations(), fixtureExecution, result, failure, diff);
-            if (failure != null && definition.getExpectations().getResultAssertions().isEmpty()) {
+            verifyExpectations(definition.getExpectations(), definition.getVerifications(), fixtureExecution, result, failure, diff);
+            if (failure != null
+                && definition.getExpectations().getResultAssertions().isEmpty()
+                && definition.getVerifications().isEmpty()) {
                 primaryFailure = failure;
             }
         } catch (Throwable ex) {
@@ -82,6 +84,7 @@ public final class ScenarioExecutor {
     }
 
     private <R> void verifyExpectations(ExpectationSet<R> expectations,
+                                        List<ScenarioVerification<R>> verifications,
                                         FixtureExecution fixtureExecution,
                                         R result,
                                         Exception failure,
@@ -89,9 +92,28 @@ public final class ScenarioExecutor {
         for (ResultAssertion<R> assertion : expectations.getResultAssertions()) {
             assertion.verify(result, failure);
         }
+        DefaultVerifyContext<R> verifyContext = verifyScenario(verifications, fixtureExecution, result, failure, diff);
         verifyChanges(expectations.getChangeExpectations(), diff);
         verifyChangeAssertions(expectations.getChangeAssertionExpectations(), diff);
         verifyFixtures(expectations.getFixtureExpectations(), fixtureExecution);
+        if (failure != null
+            && expectations.getResultAssertions().isEmpty()
+            && !verifications.isEmpty()
+            && !verifyContext.isOutcomeVerified()) {
+            throw failure;
+        }
+    }
+
+    private <R> DefaultVerifyContext<R> verifyScenario(List<ScenarioVerification<R>> verifications,
+                                                       FixtureExecution fixtureExecution,
+                                                       R result,
+                                                       Exception failure,
+                                                       ObservationDiff diff) throws Exception {
+        DefaultVerifyContext<R> context = new DefaultVerifyContext<R>(result, failure, diff, fixtureExecution);
+        for (ScenarioVerification<R> verification : verifications) {
+            verification.verify(context);
+        }
+        return context;
     }
 
     private void verifyChanges(List<ResourceChangeExpectation> expectations, ObservationDiff diff) {

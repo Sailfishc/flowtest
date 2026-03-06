@@ -22,19 +22,22 @@ public final class ScenarioDefinition<R> {
     private final CleanupPolicy cleanupPolicy;
     private final ThrowingSupplier<R> action;
     private final ExpectationSet<R> expectations;
+    private final List<ScenarioVerification<R>> verifications;
 
     public ScenarioDefinition(String name,
                               List<FixtureSpec<?>> fixtures,
                               List<ObservationSpec> observations,
                               CleanupPolicy cleanupPolicy,
                               ThrowingSupplier<R> action,
-                              ExpectationSet<R> expectations) {
+                              ExpectationSet<R> expectations,
+                              List<ScenarioVerification<R>> verifications) {
         this.name = requireText(name, "name must not be blank");
         this.fixtures = Collections.unmodifiableList(new ArrayList<FixtureSpec<?>>(fixtures));
         this.observations = Collections.unmodifiableList(new ArrayList<ObservationSpec>(observations));
         this.cleanupPolicy = Objects.requireNonNull(cleanupPolicy, "cleanupPolicy must not be null");
         this.action = Objects.requireNonNull(action, "action must not be null");
         this.expectations = Objects.requireNonNull(expectations, "expectations must not be null");
+        this.verifications = Collections.unmodifiableList(new ArrayList<ScenarioVerification<R>>(verifications));
     }
 
     public String getName() {
@@ -59,6 +62,10 @@ public final class ScenarioDefinition<R> {
 
     public ExpectationSet<R> getExpectations() {
         return expectations;
+    }
+
+    public List<ScenarioVerification<R>> getVerifications() {
+        return verifications;
     }
 
     private static String requireText(String text, String message) {

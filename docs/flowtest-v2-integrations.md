@@ -1,5 +1,9 @@
 # FlowTest V2 Integrations
 
+如果你是第一次接入，先看从 0 到 1 的完整手册：
+
+- [flowtest-v2-user-manual.md](/Users/zhangcheng/CodeProjects/flowtest/docs/flowtest-v2-user-manual.md)
+
 `flowtest-v2` is split into a small runtime plus explicit integrations. The runtime does not guess routes, and it still requires explicit table/entity registration. For common JDBC usage, fixture adapters and datasource routing can now be derived from registration metadata plus Spring Boot properties.
 
 ## JUnit 5

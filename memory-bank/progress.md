@@ -8,6 +8,7 @@
 - JDBC cleanup now also supports `RESTORE_BEFORE_IMAGE` for inserted, modified, and deleted rows.
 - Runtime executes expectations for outcome, fixture state, and change counts.
 - Runtime now supports row-level inserted/deleted/modified assertions and custom full-diff assertions.
+- Runtime now also supports context-style verification through `.verify(ctx -> { ... })`, with access to action result/failure, fixture before/after state, and resource diff collections.
 - `@JdbcEntity`, `@JdbcColumn`, and `@JdbcIgnore` can now define entity mapping by annotation, with `JdbcObservationRegistry.registerEntity(Class<?>)` loading that metadata.
 - JUnit 5 integration resolves `ScenarioExecutor` via extension builder or provider interface.
 - JUnit 5 builder now auto-generates simple fixture adapters from registered entity metadata, so fixture scenarios do not require handwritten JDBC adapters in common cases.
@@ -27,7 +28,9 @@
 - `flowtest-v2-testng` now also includes a Spring Boot + TestNG + MyBatis-Plus + dynamic-table + multi-datasource example.
 - TestNG module now contains a second complete example for Spring Boot + TestNG + multi-datasource routing.
 - H2-backed case module proves act-only, mixed fixture/watch-only, and watch-only restore flows.
-- Docs now include a dedicated `flowtest-v2` integrations guide and point to the Spring Boot + TestNG example file.
+- Docs now include both a dedicated `flowtest-v2` integrations guide and a zero-to-one user manual, with the integrations guide linking back to the manual as the primary entry point.
+- The user manual now also documents scenario classification (`act-only`, mixed, sharded, dynamic-table, multi-datasource) and recommended Traits organization patterns.
+- The primary user-facing example and manual now recommend `.verify(ctx -> { ... })` for mixed scenarios instead of stacking `fixture(...)`, `modified(...)`, `inserted(...)`, and external result assertions.
 
 ## Validation
 - Main `v2` command: `mvn -f flowtest-v2/pom.xml test`
@@ -38,6 +41,7 @@
 - `CUSTOM_COMPENSATOR` is not implemented.
 - There is no dedicated Spring Test/TestNG transaction bridge yet for rollback-style cleanup.
 - There is no transaction-aware `ScenarioExecutor` wrapper yet for `CleanupPolicy.ROLLBACK`.
+- Observation DSL still needs simplification; resource declaration remains overload-heavy even after verification DSL was improved.
 
 ## Known Constraints
 - Simple JDBC fixtures can now use convention-based adapter generation, but special persistence behavior still requires a custom adapter.

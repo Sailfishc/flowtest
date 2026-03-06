@@ -1,7 +1,6 @@
 package com.github.sailfishc.flowtest.v2.testng.springboot;
 
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
-import com.github.sailfishc.flowtest.v2.assertion.RowAssertions;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
@@ -71,22 +70,23 @@ public class FlowTestV2SpringBootTestNgExampleTest extends AbstractTestNGSpringC
                 tenantTrait(100L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .observe(o -> o
+            .watch(w -> w
                 .fixture(user)
-                .shardedTable("ft_order", RouteScope.of(RouteCondition.eq("tenant_id", 100L))))
+                .table("ft_order").route("tenant_id", 100L))
             .when(() -> orderService.createOrder(100L, 1L, 10L))
-            .then(t -> t.expectNoException()
-                .fixture(user, value -> assertThat(value.getBalance()).isEqualTo(80L))
-                .modified(TestUser.class.getName(), 1)
-                .inserted("ft_order", 1)
-                .insertedRow("ft_order", RowAssertions.allOf(
-                    RowAssertions.columnEquals("id", 10L),
-                    RowAssertions.columnEquals("tenant_id", 100L),
-                    RowAssertions.columnEquals("status", "CREATED")
-                )))
+            .verify(ctx -> {
+                ctx.success();
+                assertThat(ctx.result()).isEqualTo(10L);
+                assertThat(ctx.fixture(user).before().getBalance()).isEqualTo(100L);
+                assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(80L);
+                assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
+                assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
+                assertThat(ctx.table("ft_order").insertedOne().getColumn("id")).isEqualTo(10L);
+                assertThat(ctx.table("ft_order").insertedOne().getColumn("tenant_id")).isEqualTo(100L);
+                assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
+            })
             .execute(executor);
 
-        assertThat(result.getResult()).isEqualTo(10L);
         assertThat(queryForLong("select count(*) from ft_user")).isEqualTo(0L);
         assertThat(queryForLong("select count(*) from ft_order where tenant_id = 100")).isEqualTo(0L);
     }

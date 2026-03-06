@@ -9,6 +9,8 @@ public interface ScenarioPlan<R> {
 
     ScenarioPlan<R> then(Consumer<ThenSpec<R>> then);
 
+    ScenarioPlan<R> verify(ScenarioVerification<R> verification);
+
     ScenarioDefinition<R> definition();
 
     CompiledScenario<R> compile();

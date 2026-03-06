@@ -12,6 +12,8 @@ public interface ScenarioBuilder {
 
     ScenarioBuilder given(Consumer<GivenSpec> given);
 
+    ScenarioBuilder watch(Consumer<WatchSpec> watch);
+
     ScenarioBuilder observe(Consumer<ObserveSpec> observe);
 
     ScenarioBuilder cleanup(CleanupPolicy cleanupPolicy);

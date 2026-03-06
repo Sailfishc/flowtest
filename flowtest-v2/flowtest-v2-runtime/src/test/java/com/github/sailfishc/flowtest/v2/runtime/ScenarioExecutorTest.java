@@ -102,6 +102,68 @@ class ScenarioExecutorTest {
     }
 
     @Test
+    void shouldVerifyScenarioThroughContext() throws Exception {
+        final FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
+        RecordingFixtureExecutor fixtureExecutor = new RecordingFixtureExecutor(user, new TestUser(1L, "before"), new TestUser(1L, "after"));
+        List<ObservationSnapshot> snapshots = Arrays.asList(
+            new ObservationSnapshot(Arrays.asList(
+                new ResourceSnapshot(TestUser.class.getName(), Collections.singletonList(row(1L, "name", "before"))),
+                new ResourceSnapshot("orders", Collections.<RowSnapshot>emptyList())
+            )),
+            new ObservationSnapshot(Arrays.asList(
+                new ResourceSnapshot(TestUser.class.getName(), Collections.singletonList(row(1L, "name", "after"))),
+                new ResourceSnapshot("orders", Arrays.asList(
+                    row(10L, "tenant_id", 100L, "status", "CREATED"),
+                    row(11L, "tenant_id", 100L, "status", "CREATED")
+                ))
+            ))
+        );
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(snapshots);
+        ScenarioExecutor executor = new ScenarioExecutor(fixtureExecutor, observationExecutor);
+
+        ScenarioExecutionResult<Long> result = FlowTestV2.scenario("verify-context")
+            .given(g -> g.persist(user, nameTrait("before")))
+            .observe(o -> o.fixture(user).table("orders"))
+            .when(() -> 10L)
+            .verify(ctx -> {
+                ctx.success();
+                assertThat(ctx.result()).isEqualTo(10L);
+                assertThat(ctx.fixture(user).before().getName()).isEqualTo("before");
+                assertThat(ctx.fixture(user).after().getName()).isEqualTo("after");
+                assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
+                assertThat(ctx.table("orders").insertedCount()).isEqualTo(2L);
+                assertThat(ctx.table("orders").insertedRows())
+                    .extracting(row -> row.getColumn("status"))
+                    .containsExactly("CREATED", "CREATED");
+            })
+            .execute(executor);
+
+        assertThat(result.getResult()).isEqualTo(10L);
+    }
+
+    @Test
+    void shouldAllowVerifyToHandleExpectedFailure() throws Exception {
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(Arrays.asList(
+            snapshot("orders"),
+            snapshot("orders")
+        ));
+        ScenarioExecutor executor = new ScenarioExecutor(observationExecutor);
+
+        ScenarioExecutionResult<String> result = FlowTestV2.scenario("verify-failure")
+            .observe(o -> o.table("orders"))
+            .<String>when(() -> {
+                throw new IllegalStateException("boom");
+            })
+            .verify(ctx -> {
+                ctx.failure(IllegalStateException.class);
+                assertThat(ctx.failure()).hasMessage("boom");
+            })
+            .execute(executor);
+
+        assertThat(result.getFailure()).isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
     void shouldRethrowUnhandledActionFailure() {
         RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(Arrays.asList(
             snapshot("orders"),

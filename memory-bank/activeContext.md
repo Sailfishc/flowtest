@@ -32,6 +32,10 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Added a Spring Boot + TestNG + MyBatis-Plus example that uses `BaseMapper`, `DynamicTableNameInnerInterceptor`, and FlowTest dynamic-table observation against logical table names.
 - `JdbcObservationRegistry.registerEntity(Class<?>)` now resolves entity metadata from MyBatis-Plus annotations (`@TableName`, `@TableId`, `@TableField`) and falls back to conventions when `@JdbcEntity` is absent.
 - Added a second Spring Boot + TestNG example for MyBatis-Plus dynamic tables across multiple datasources.
+- Added a dedicated zero-to-one user manual at `docs/flowtest-v2-user-manual.md`, structured around dependency setup, registry wiring, first scenario, Spring Boot/TestNG/JUnit 5 integration, cleanup policy selection, sharding, dynamic tables, multi-datasource routing, and MyBatis-Plus examples.
+- Expanded the user manual with a scenario comparison table and a dedicated Traits best-practices section covering inline traits, domain trait libraries, composition, and `TraitContext` usage for fixture relationships.
+- Added a new context-style runtime verification DSL via `.verify(ctx -> { ... })`, exposing `result`, `failure`, fixture `before/after`, and resource-level diff access in one place.
+- Updated the primary Spring Boot + TestNG example and the user manual to recommend `.verify(ctx -> { ... })` over fragmented `.then(...)` assertions for mixed scenarios.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
@@ -46,6 +50,8 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Dynamic fixture persistence/reload/delete is supported even when the dynamic property is entity-only and ignored from DB mapping, but fixture-backed observation on dynamic tables should still use explicit `tableRouteScope` rather than bare `observe.fixture(handle)`.
 - MyBatis-Plus integration is currently demonstrated at the example level: entity classes can carry both FlowTest and MyBatis-Plus annotations, while dynamic table execution uses the MyBatis-Plus interceptor and FlowTest independently resolves the same logical table for observation/cleanup.
 - For MyBatis-Plus entities, `@JdbcEntity` is no longer required in common cases; `@JdbcDynamicTable` still remains the explicit hook for FlowTest physical-table resolution.
+- The recommended documentation reading order is now: `flowtest-v2-user-manual.md` first, then `flowtest-v2-integrations.md` for integration-specific details, then `flowtest-v2-architecture.md` for model rationale.
+- The current recommended user-facing assertion path is context-based verification (`.verify(ctx -> { ... })`); the older declarative `.then(...)` API remains for compatibility and simple count-style checks.
 
 ## Next Likely Steps
 - Consider transaction-aware `ROLLBACK` support for Spring-managed tests.
@@ -53,3 +59,4 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Decide whether row-level assertion DSL needs stronger field/path matchers beyond simple column equality.
 - Decide whether datasource routing also needs entity-name bindings in addition to table names and glob patterns.
 - Decide whether runtime should auto-derive `TableRouteScope` from fixture-backed dynamic entities so `observe.fixture(handle)` can work without extra table-route declarations.
+- Continue DSL cleanup on the observation side; `verify` is now context-based, but `observe` still has too many overloads and low-level terms (`shardedTable`, explicit scope objects) in the main path.

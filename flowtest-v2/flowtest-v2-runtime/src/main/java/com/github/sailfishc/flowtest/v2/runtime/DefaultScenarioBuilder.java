@@ -43,6 +43,12 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
     }
 
     @Override
+    public ScenarioBuilder watch(Consumer<WatchSpec> watch) {
+        watch.accept(new DefaultWatchSpec(observations));
+        return this;
+    }
+
+    @Override
     public ScenarioBuilder observe(Consumer<ObserveSpec> observe) {
         observe.accept(new DefaultObserveSpec(observations));
         return this;
@@ -174,6 +180,118 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         }
     }
 
+    private static final class DefaultWatchSpec implements WatchSpec {
+
+        private final List<ObservationSpec> observations;
+
+        private DefaultWatchSpec(List<ObservationSpec> observations) {
+            this.observations = observations;
+        }
+
+        @Override
+        public WatchSpec fixture(FixtureHandle<?> handle) {
+            observations.add(ObservationSpec.fixture(handle));
+            return this;
+        }
+
+        @Override
+        public WatchResourceSpec table(String tableName) {
+            ObservationSpec observation = ObservationSpec.table(tableName, TableRouteScope.empty(), RouteScope.empty(), false);
+            observations.add(observation);
+            return new DefaultWatchResourceSpec(observations, observations.size() - 1);
+        }
+
+        @Override
+        public WatchResourceSpec entity(Class<?> entityType) {
+            ObservationSpec observation = ObservationSpec.entity(entityType, TableRouteScope.empty(), RouteScope.empty(), false);
+            observations.add(observation);
+            return new DefaultWatchResourceSpec(observations, observations.size() - 1);
+        }
+    }
+
+    private static final class DefaultWatchResourceSpec implements WatchResourceSpec {
+
+        private final List<ObservationSpec> observations;
+        private final int index;
+
+        private DefaultWatchResourceSpec(List<ObservationSpec> observations, int index) {
+            this.observations = observations;
+            this.index = index;
+        }
+
+        @Override
+        public WatchSpec fixture(FixtureHandle<?> handle) {
+            return new DefaultWatchSpec(observations).fixture(handle);
+        }
+
+        @Override
+        public WatchResourceSpec table(String tableName) {
+            return new DefaultWatchSpec(observations).table(tableName);
+        }
+
+        @Override
+        public WatchResourceSpec entity(Class<?> entityType) {
+            return new DefaultWatchSpec(observations).entity(entityType);
+        }
+
+        @Override
+        public WatchResourceSpec route(String columnName, Object value) {
+            return route(RouteCondition.eq(columnName, value));
+        }
+
+        @Override
+        public WatchResourceSpec route(RouteCondition condition) {
+            ObservationSpec current = currentObservation();
+            return replace(current.getTableRouteScope(), current.getRouteScope().append(condition), true);
+        }
+
+        @Override
+        public WatchResourceSpec route(RouteScope routeScope) {
+            ObservationSpec current = currentObservation();
+            RouteScope merged = current.getRouteScope();
+            for (RouteCondition condition : routeScope.getConditions()) {
+                merged = merged.append(condition);
+            }
+            return replace(current.getTableRouteScope(), merged, true);
+        }
+
+        @Override
+        public WatchResourceSpec tableBy(String key, Object value) {
+            ObservationSpec current = currentObservation();
+            return replace(current.getTableRouteScope().append(key, value), current.getRouteScope(), current.isRouteRequired());
+        }
+
+        @Override
+        public WatchResourceSpec tableRoute(TableRouteScope tableRouteScope) {
+            ObservationSpec current = currentObservation();
+            TableRouteScope merged = current.getTableRouteScope();
+            for (com.github.sailfishc.flowtest.v2.spec.TableRouteValue value : tableRouteScope.getValues()) {
+                merged = merged.append(value);
+            }
+            return replace(merged, current.getRouteScope(), current.isRouteRequired());
+        }
+
+        private ObservationSpec currentObservation() {
+            return observations.get(index);
+        }
+
+        private WatchResourceSpec replace(TableRouteScope tableRouteScope, RouteScope routeScope, boolean routeRequired) {
+            ObservationSpec current = currentObservation();
+            observations.set(index, recreate(current, tableRouteScope, routeScope, routeRequired));
+            return this;
+        }
+
+        private ObservationSpec recreate(ObservationSpec base,
+                                         TableRouteScope tableRouteScope,
+                                         RouteScope routeScope,
+                                         boolean routeRequired) {
+            if (base.getResourceKind() == com.github.sailfishc.flowtest.v2.spec.ResourceKind.TABLE) {
+                return ObservationSpec.table(base.getResourceName(), tableRouteScope, routeScope, routeRequired);
+            }
+            return ObservationSpec.entity(base.getResourceType(), tableRouteScope, routeScope, routeRequired);
+        }
+    }
+
     private static final class DefaultScenarioPlan<R> implements ScenarioPlan<R>, ThenSpec<R> {
 
         private final String name;
@@ -182,6 +300,7 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         private final CleanupPolicy cleanupPolicy;
         private final ThrowingSupplier<R> action;
         private final List<ResultAssertion<R>> resultAssertions = new ArrayList<ResultAssertion<R>>();
+        private final List<ScenarioVerification<R>> scenarioVerifications = new ArrayList<ScenarioVerification<R>>();
         private final List<ResourceChangeExpectation> changeExpectations = new ArrayList<ResourceChangeExpectation>();
         private final List<ResourceChangeAssertionExpectation> changeAssertionExpectations =
             new ArrayList<ResourceChangeAssertionExpectation>();
@@ -206,6 +325,12 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         }
 
         @Override
+        public ScenarioPlan<R> verify(ScenarioVerification<R> verification) {
+            scenarioVerifications.add(verification);
+            return this;
+        }
+
+        @Override
         public ScenarioDefinition<R> definition() {
             return new ScenarioDefinition<R>(
                 name,
@@ -213,7 +338,13 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
                 observations,
                 cleanupPolicy,
                 action,
-                new ExpectationSet<R>(resultAssertions, changeExpectations, changeAssertionExpectations, fixtureExpectations)
+                new ExpectationSet<R>(
+                    resultAssertions,
+                    changeExpectations,
+                    changeAssertionExpectations,
+                    fixtureExpectations
+                ),
+                scenarioVerifications
             );
         }
 

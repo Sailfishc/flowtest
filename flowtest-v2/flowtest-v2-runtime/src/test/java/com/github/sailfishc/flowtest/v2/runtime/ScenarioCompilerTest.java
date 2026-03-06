@@ -57,6 +57,37 @@ class ScenarioCompilerTest {
     }
 
     @Test
+    void compilesWatchDslWithRouteAndDynamicTable() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("watch-dsl")
+            .watch(new java.util.function.Consumer<WatchSpec>() {
+                @Override
+                public void accept(WatchSpec watch) {
+                    watch.table("t_order")
+                        .tableBy("bucket", "a")
+                        .route("tenant_id", 1001L);
+                }
+            })
+            .when(new com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier<String>() {
+                @Override
+                public String get() {
+                    return "ok";
+                }
+            })
+            .verify(new ScenarioVerification<String>() {
+                @Override
+                public void verify(VerifyContext<String> context) {
+                    context.success();
+                }
+            })
+            .compile();
+
+        assertThat(compiled.getDefinition().getObservations()).hasSize(1);
+        assertThat(compiled.getDefinition().getObservations().get(0).isRouteRequired()).isTrue();
+        assertThat(compiled.getDefinition().getObservations().get(0).getRouteScope().getConditions()).hasSize(1);
+        assertThat(compiled.getDefinition().getObservations().get(0).getTableRouteScope().getValues()).hasSize(1);
+    }
+
+    @Test
     void compilesMixedFixtureAndWatchOnlyScenario() {
         final FixtureHandle<User> user = FixtureHandle.named(User.class, "buyer");
 
