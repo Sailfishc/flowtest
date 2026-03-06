@@ -1,8 +1,6 @@
 package com.github.sailfishc.flowtest.v2.spring.boot;
 
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
-import com.github.sailfishc.flowtest.v2.fixture.jdbc.FixtureAdapterRegistry;
-import com.github.sailfishc.flowtest.v2.fixture.jdbc.FixtureEntityAdapter;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
@@ -20,7 +18,6 @@ import org.springframework.context.annotation.Bean;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.Statement;
 
@@ -142,11 +139,6 @@ class FlowTestV2AutoConfigurationTest {
     static class TestApplication {
 
         @Bean
-        public FixtureAdapterRegistry fixtureAdapterRegistry() {
-            return new FixtureAdapterRegistry().register(new TestUserAdapter());
-        }
-
-        @Bean
         public JdbcObservationRegistry jdbcObservationRegistry() {
             return new JdbcObservationRegistry()
                 .registerEntity(TestUser.class, "ft_user", "id")
@@ -191,65 +183,6 @@ class FlowTestV2AutoConfigurationTest {
 
         public void setBalance(Long balance) {
             this.balance = balance;
-        }
-    }
-
-    static final class TestUserAdapter implements FixtureEntityAdapter<TestUser> {
-
-        @Override
-        public Class<TestUser> getEntityType() {
-            return TestUser.class;
-        }
-
-        @Override
-        public void insert(Connection connection, TestUser entity) throws Exception {
-            PreparedStatement statement = connection.prepareStatement(
-                "insert into ft_user(id, tenant_id, name, balance) values (?, ?, ?, ?)"
-            );
-            try {
-                statement.setLong(1, entity.getId());
-                statement.setLong(2, entity.getTenantId());
-                statement.setString(3, entity.getName());
-                statement.setLong(4, entity.getBalance());
-                statement.executeUpdate();
-            } finally {
-                statement.close();
-            }
-        }
-
-        @Override
-        public TestUser reload(Connection connection, TestUser entity) throws Exception {
-            PreparedStatement statement = connection.prepareStatement(
-                "select id, tenant_id, name, balance from ft_user where id = ?"
-            );
-            try {
-                statement.setLong(1, entity.getId());
-                ResultSet resultSet = statement.executeQuery();
-                try {
-                    resultSet.next();
-                    TestUser value = new TestUser();
-                    value.setId(resultSet.getLong("id"));
-                    value.setTenantId(resultSet.getLong("tenant_id"));
-                    value.setName(resultSet.getString("name"));
-                    value.setBalance(resultSet.getLong("balance"));
-                    return value;
-                } finally {
-                    resultSet.close();
-                }
-            } finally {
-                statement.close();
-            }
-        }
-
-        @Override
-        public void delete(Connection connection, TestUser entity) throws Exception {
-            PreparedStatement statement = connection.prepareStatement("delete from ft_user where id = ?");
-            try {
-                statement.setLong(1, entity.getId());
-                statement.executeUpdate();
-            } finally {
-                statement.close();
-            }
         }
     }
 }

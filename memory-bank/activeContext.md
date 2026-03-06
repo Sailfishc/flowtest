@@ -15,6 +15,7 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Added `flowtest-v2-testng` with listener-based executor injection.
 - Added a complete Spring Boot + TestNG example in `flowtest-v2-testng`, using `AbstractTestNGSpringContextTests`, starter auto-configuration, listener injection, H2, and row-level assertions.
 - Added `flowtest-v2-spring-boot-starter` that auto-configures JDBC registry/executor beans and `ScenarioExecutor`.
+- Added convention-based JDBC fixture adapter generation from `JdbcObservationRegistry.registerEntity(...)`, with optional per-property overrides and ignores.
 - Added row-level change assertions (`insertedRow`, `deletedRow`, `modifiedRow`, and `change(...)`) plus helper DSL classes.
 - Added a `flowtest-v2` integration guide covering JUnit 5, TestNG, Spring Boot, row-level assertions, and the copyable Spring Boot + TestNG example.
 
@@ -22,6 +23,7 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
 - Traits belong only to fixture construction.
 - Route scope must be explicit for sharded observations.
+- Registered entity metadata is now the default source for both observation and simple JDBC fixture persistence.
 - `RESTORE_BEFORE_IMAGE` cleanup runs route-aware SQL and is now the recommended policy for watch-only scenarios that mutate existing rows.
 
 ## Next Likely Steps

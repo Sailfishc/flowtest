@@ -3,6 +3,7 @@ package com.github.sailfishc.flowtest.v2.fixture.jdbc;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecution;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureMaterializer;
+import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
 
@@ -22,8 +23,18 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
     private final FixtureAdapterRegistry adapterRegistry;
     private final FixtureMaterializer materializer;
 
+    public JdbcFixtureExecutor(DataSource dataSource, JdbcObservationRegistry observationRegistry) {
+        this(dataSource, JdbcFixtureAdapters.fromObservationRegistry(observationRegistry));
+    }
+
     public JdbcFixtureExecutor(DataSource dataSource, FixtureAdapterRegistry adapterRegistry) {
         this(dataSource, adapterRegistry, new FixtureMaterializer());
+    }
+
+    public JdbcFixtureExecutor(DataSource dataSource,
+                               FixtureAdapterRegistry adapterRegistry,
+                               JdbcObservationRegistry observationRegistry) {
+        this(dataSource, JdbcFixtureAdapters.merge(adapterRegistry, observationRegistry), new FixtureMaterializer());
     }
 
     public JdbcFixtureExecutor(DataSource dataSource,

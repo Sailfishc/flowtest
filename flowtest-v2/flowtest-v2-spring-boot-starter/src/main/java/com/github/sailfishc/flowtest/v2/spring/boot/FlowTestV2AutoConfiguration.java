@@ -39,8 +39,10 @@ public class FlowTestV2AutoConfiguration {
 
     @Bean
     @ConditionalOnMissingBean(FixtureExecutor.class)
-    public FixtureExecutor flowTestV2FixtureExecutor(DataSource dataSource, FixtureAdapterRegistry fixtureAdapterRegistry) {
-        return new JdbcFixtureExecutor(dataSource, fixtureAdapterRegistry);
+    public FixtureExecutor flowTestV2FixtureExecutor(DataSource dataSource,
+                                                     FixtureAdapterRegistry fixtureAdapterRegistry,
+                                                     JdbcObservationRegistry observationRegistry) {
+        return new JdbcFixtureExecutor(dataSource, fixtureAdapterRegistry, observationRegistry);
     }
 
     @Bean

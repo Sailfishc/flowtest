@@ -9,9 +9,11 @@
 - Runtime executes expectations for outcome, fixture state, and change counts.
 - Runtime now supports row-level inserted/deleted/modified assertions and custom full-diff assertions.
 - JUnit 5 integration resolves `ScenarioExecutor` via extension builder or provider interface.
+- JUnit 5 builder now auto-generates simple fixture adapters from registered entity metadata, so fixture scenarios do not require handwritten JDBC adapters in common cases.
 - TestNG integration injects `ScenarioExecutor` via listener and annotated fields.
 - TestNG module now contains a complete Spring Boot + TestNG example that runs under the TestNG provider and demonstrates starter-based wiring end to end.
 - Spring Boot starter auto-configures JDBC registries, executors, and `ScenarioExecutor`.
+- Spring Boot starter now auto-generates fixture adapters for registered entities and supports property-level override/ignore metadata.
 - H2-backed case module proves act-only, mixed fixture/watch-only, and watch-only restore flows.
 - Docs now include a dedicated `flowtest-v2` integrations guide and point to the Spring Boot + TestNG example file.
 
@@ -26,6 +28,6 @@
 - There is no transaction-aware `ScenarioExecutor` wrapper yet for `CleanupPolicy.ROLLBACK`.
 
 ## Known Constraints
-- JDBC fixture support relies on explicit adapters per entity type.
+- Simple JDBC fixtures can now use convention-based adapter generation, but special persistence behavior still requires a custom adapter.
 - Sharded observation requires route scope before action execution.
 - `RESTORE_BEFORE_IMAGE` assumes rows are fully writable from snapshot columns and does not yet handle database-generated or non-updatable columns specially.

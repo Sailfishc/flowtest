@@ -23,4 +23,13 @@ public final class FixtureAdapterRegistry {
         }
         return (FixtureEntityAdapter<T>) adapter;
     }
+
+    public boolean hasAdapter(Class<?> entityType) {
+        return adapters.containsKey(entityType);
+    }
+
+    public FixtureAdapterRegistry registerAll(FixtureAdapterRegistry source) {
+        adapters.putAll(source.adapters);
+        return this;
+    }
 }

@@ -48,14 +48,11 @@ Add `flowtest-v2-spring-boot-starter`. The starter auto-configures:
 - `ObservationExecutor`
 - `ScenarioExecutor`
 
+For normal bean-style fixtures, you only need to register entities and observed tables. The starter now derives a default fixture adapter from entity metadata using `camelCase -> snake_case`.
+
 You still need to provide business registrations:
 
 ```java
-@Bean
-FixtureAdapterRegistry fixtureAdapterRegistry() {
-    return new FixtureAdapterRegistry().register(new UserAdapter());
-}
-
 @Bean
 JdbcObservationRegistry jdbcObservationRegistry() {
     return new JdbcObservationRegistry()
@@ -63,6 +60,22 @@ JdbcObservationRegistry jdbcObservationRegistry() {
         .registerTable("ft_order", "id");
 }
 ```
+
+When a few fields do not follow the default naming rule, register only the differences:
+
+```java
+@Bean
+JdbcObservationRegistry jdbcObservationRegistry() {
+    return new JdbcObservationRegistry()
+        .entity(TestUser.class, "ft_user", "id")
+        .column("displayName", "display_name")
+        .ignore("transientFlag")
+        .register()
+        .registerTable("ft_order", "id");
+}
+```
+
+Keep a custom `FixtureEntityAdapter` only for special persistence logic such as multi-table inserts, generated keys, or non-standard JDBC types.
 
 ### Complete Spring Boot + TestNG Example
 
@@ -80,7 +93,7 @@ as the copyable reference. It shows the full wiring:
 3. Add `@SpringBootTest` and `@Listeners(FlowTestV2Listener.class)`.
 4. Implement `ScenarioExecutorProvider` and return the Spring-managed `ScenarioExecutor`.
 5. Inject `ScenarioExecutor` into a field annotated with `@FlowTestV2Executor`.
-6. Register `FixtureAdapterRegistry` and `JdbcObservationRegistry` in a test configuration.
+6. Register `JdbcObservationRegistry` in a test configuration. Only special persistence cases still need a custom `FixtureAdapterRegistry`.
 7. Build the scenario with `given -> observe -> when -> then`, then execute it with the injected executor.
 
 The example uses:
