@@ -43,6 +43,8 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Updated JUnit 5 and TestNG integrations to resolve `ScenarioExecutor` from Spring `ApplicationContext` reflectively, so Spring Boot tests no longer need to implement `ScenarioExecutorProvider` in the recommended path.
 - Updated the user manual, integration guide, and Spring Boot example tests to remove `ScenarioExecutorProvider` from recommended Spring Boot usage; it remains only as a deprecated compatibility fallback.
 - Tightened fixture-backed observation enrichment so dynamic-table fixtures derive both physical-table route and complete identity route predicates, including composite-key handling and regression coverage.
+- Updated JDBC observation resolution so typed watch-only resources (`watch(w -> w.entity(Foo.class))`) auto-register entity metadata on first use rather than requiring upfront `registerEntity(Foo.class)`.
+- Updated Spring Boot, JUnit 5, TestNG, and integration-guide examples to remove redundant `registerEntity(...)` calls where the entity is only used via fixture-backed or typed observation paths.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
@@ -60,6 +62,7 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - The recommended documentation reading order is now: `flowtest-v2-user-manual.md` first, then `flowtest-v2-integrations.md` for integration-specific details, then `flowtest-v2-architecture.md` for model rationale.
 - The current recommended user-facing assertion path is context-based verification (`.verify(ctx -> { ... })`); the older declarative `.then(...)` API remains for compatibility and simple count-style checks.
 - The current recommended user-facing declaration path is `.watch(...) + .verify(ctx -> { ... }) + .run()` under test-framework integration; the older `.observe(...) + .then(...)` and explicit `.execute(executor)` path remains as a lower-level compatibility layer.
+- The registry should now be explained primarily as an override/configuration point for watch-only tables and non-standard mappings; typed entity observations should default to annotation/convention inference.
 - For Spring Boot integration, the recommended path is now zero-provider: `@FlowTestV2Test` for JUnit 5 or `@Listeners(FlowTestV2Listener.class)` for TestNG, then `.run()`; `ScenarioExecutorProvider` is compatibility-only.
 
 ## Next Likely Steps

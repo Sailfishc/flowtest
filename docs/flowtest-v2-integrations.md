@@ -59,17 +59,17 @@ Add `flowtest-v2-spring-boot-starter`. The starter auto-configures:
 - `ObservationExecutor`
 - `ScenarioExecutor`
 
-For normal bean-style fixtures, you only need to register entities and observed tables. The starter now derives a default fixture adapter from entity metadata using `camelCase -> snake_case`.
+For normal bean-style fixtures, the starter derives a default fixture adapter from entity metadata using `camelCase -> snake_case`.
 
 **Auto data filling:** The starter automatically configures `InstancioDataFiller` so fixture entities are pre-filled with random data before traits are applied. Set `flowtest.v2.data-filler=none` to disable.
 
-**Auto fixture registration:** Fixture entities declared in `given(g -> g.persist(...))` are automatically registered in `JdbcObservationRegistry` if not already registered, so you only need to manually register watch-only tables/entities.
+**Auto entity registration:** Fixture entities declared in `given(g -> g.persist(...))` are automatically registered in `JdbcObservationRegistry` if not already registered, and `watch(w -> w.entity(Foo.class))` will also lazily introspect and register `Foo.class` on first use. In the common path, you only need to manually register watch-only tables or explicit overrides.
 `registerEntity(Class<?>)` can now resolve metadata from:
 - `@JdbcEntity`
 - MyBatis-Plus `@TableName`, `@TableId`, `@TableField`
 - convention fallback (`CamelCase -> snake_case`, `id` property as key)
 
-You still need to provide business registrations:
+You still need to provide business registrations for watch-only tables:
 
 ```java
 @JdbcEntity(table = "ft_user", keyColumns = "id")
@@ -79,7 +79,6 @@ public class TestUser {
 @Bean
 JdbcObservationRegistry jdbcObservationRegistry() {
     return new JdbcObservationRegistry()
-        .registerEntity(TestUser.class)
         .registerTable("ft_order", "id");
 }
 ```
@@ -226,7 +225,6 @@ public class TestUser {
 }
 
 JdbcObservationRegistry observationRegistry = new JdbcObservationRegistry()
-    .registerEntity(TestUser.class)
     .registerTable("ft_order", "id");
 
 ScenarioExecutor executor = new ScenarioExecutor(
@@ -275,7 +273,6 @@ That example shows:
 - `BaseMapper`-based insert through MyBatis-Plus
 - `DynamicTableNameInnerInterceptor` selecting `ft_mp_order_dynamic_a` / `ft_mp_order_dynamic_b`
 - `@TableField(exist = false)` on the dynamic bucket property
-- `registerEntity(DynamicOrderEntity.class)` without `@JdbcEntity`
 - FlowTest observing the logical table `ft_mp_order_dynamic`
 - `dynamicTableBy(...)` and `.route(...)` used together in the same scenario
 - cleanup only affecting the resolved physical table

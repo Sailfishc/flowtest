@@ -189,9 +189,11 @@
 
 ## 4. 第二步：注册实体和表
 
-`v2` 不会扫描整个数据库，但对于 **fixture 实体**（在 `given(...)` 中声明的实体），框架会在运行时自动注册 JDBC 元数据并生成默认的 fixture adapter。
+`v2` 不会扫描整个数据库，但对于 **带类型信息的实体观察**，框架会优先按注解和约定自动推导 JDBC 元数据。
 
-所以最简场景下你不需要手动注册 fixture 用到的实体类。
+对于 **fixture 实体**（在 `given(...)` 中声明的实体），框架也会在运行时自动注册 JDBC 元数据并生成默认的 fixture adapter。
+
+所以最简场景下你不需要手动注册 fixture 用到的实体类；如果你写的是 `watch(w -> w.entity(TestUser.class))`，同样不需要手动 `registerEntity(...)`。
 
 对于 **watch-only 表**（只在 `watch(...)` 中观测但不造数的表），你仍然需要显式注册。
 
@@ -222,7 +224,6 @@ public class TestUser {
 @Bean
 JdbcObservationRegistry jdbcObservationRegistry() {
     return new JdbcObservationRegistry()
-        .registerEntity(TestUser.class)
         .registerTable("ft_order", "id");
 }
 ```
@@ -252,10 +253,17 @@ public class OrderEntity {
 ```java
 @Bean
 JdbcObservationRegistry jdbcObservationRegistry() {
-    return new JdbcObservationRegistry()
-        .registerEntity(OrderEntity.class);
+    return new JdbcObservationRegistry();
 }
 ```
+
+如果你后面直接写：
+
+```java
+.watch(w -> w.entity(OrderEntity.class))
+```
+
+框架会按实体注解自动推导表名、主键、列名和动态表规则。
 
 ### 4.3 字段名和列名不一致
 

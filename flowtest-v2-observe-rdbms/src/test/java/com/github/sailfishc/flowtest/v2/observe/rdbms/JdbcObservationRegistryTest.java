@@ -31,6 +31,18 @@ class JdbcObservationRegistryTest {
     }
 
     @Test
+    void shouldAutoRegisterObservedEntityWhenResolvingByType() {
+        JdbcObservationRegistry registry = new JdbcObservationRegistry();
+
+        JdbcObservationRegistry.JdbcObservedResource resource = registry.resolve(
+            ObservationSpec.entity(AnnotatedUser.class, TableRouteScope.empty(), RouteScope.empty(), false)
+        );
+
+        assertThat(resource.getIdentity().getTableName()).isEqualTo("ft_user");
+        assertThat(registry.getEntityRegistrations()).containsKey(AnnotatedUser.class);
+    }
+
+    @Test
     void shouldResolveDynamicPhysicalTableFromRouteScope() {
         JdbcObservationRegistry registry = new JdbcObservationRegistry()
             .table("ft_order", "id")

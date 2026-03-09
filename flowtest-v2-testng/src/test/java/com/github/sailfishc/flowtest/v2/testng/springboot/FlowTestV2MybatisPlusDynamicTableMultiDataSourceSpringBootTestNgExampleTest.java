@@ -179,8 +179,6 @@ public class FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExa
         @Bean
         public JdbcObservationRegistry jdbcObservationRegistry() {
             return new JdbcObservationRegistry()
-                .registerEntity(TestUser.class)
-                .registerEntity(DynamicOrderEntity.class)
                 .table("ft_mp_order_dynamic", "id")
                 .dynamicByKey("bucket")
                 .register();

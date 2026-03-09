@@ -140,7 +140,6 @@ class FlowTestV2AutoConfigurationTest {
         @Bean
         public JdbcObservationRegistry jdbcObservationRegistry() {
             return new JdbcObservationRegistry()
-                .registerEntity(TestUser.class)
                 .registerTable("ft_order", "id");
         }
     }

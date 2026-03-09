@@ -138,7 +138,6 @@ class FlowTestV2SimpleSpringBootTest {
         @Bean
         public JdbcObservationRegistry jdbcObservationRegistry() {
             return new JdbcObservationRegistry()
-                .registerEntity(SimpleOrder.class)
                 .registerTable("simple_order", "id");
         }
 

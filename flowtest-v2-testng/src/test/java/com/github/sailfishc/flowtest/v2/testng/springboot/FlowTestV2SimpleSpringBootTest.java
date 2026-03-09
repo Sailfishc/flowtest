@@ -136,7 +136,6 @@ public class FlowTestV2SimpleSpringBootTest extends AbstractTestNGSpringContextT
         @Bean
         public JdbcObservationRegistry jdbcObservationRegistry() {
             return new JdbcObservationRegistry()
-                .registerEntity(SimpleUser.class)
                 .registerTable("simple_user", "id");
         }
 

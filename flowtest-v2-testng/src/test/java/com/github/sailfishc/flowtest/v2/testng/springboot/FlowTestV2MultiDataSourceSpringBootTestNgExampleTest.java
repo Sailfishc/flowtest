@@ -183,7 +183,6 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
         @Bean
         public JdbcObservationRegistry jdbcObservationRegistry() {
             return new JdbcObservationRegistry()
-                .registerEntity(TestUser.class)
                 .registerTable("ft_order", "id");
         }
     }

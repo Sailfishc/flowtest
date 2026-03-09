@@ -103,6 +103,23 @@ class JdbcObservationExecutorTest {
     }
 
     @Test
+    void shouldCaptureEntityObservationWithoutExplicitRegistration() throws Exception {
+        JdbcObservationExecutor entityExecutor = new JdbcObservationExecutor(dataSource, new JdbcObservationRegistry());
+        List<ObservationSpec> observations = Collections.singletonList(
+            ObservationSpec.entity(ObservedOrder.class, RouteScope.of(RouteCondition.eq("tenant_id", 100L)), false)
+        );
+
+        ObservationSnapshot before = entityExecutor.capture(observations);
+        executeSql("insert into ft_order(id, tenant_id, status) values (1, 100, 'CREATED')");
+        executeSql("insert into ft_order(id, tenant_id, status) values (2, 200, 'CREATED')");
+        ObservationSnapshot after = entityExecutor.capture(observations);
+
+        ObservationDiff diff = ObservationDiff.between(before, after);
+
+        assertThat(diff.getChange(ObservedOrder.class.getName()).getInsertedCount()).isEqualTo(1L);
+    }
+
+    @Test
     void shouldObserveFixtureBackedDynamicTableUsingDerivedIdentityRoute() throws Exception {
         executeSql("drop table if exists ft_order_dynamic_a");
         executeSql("drop table if exists ft_order_dynamic_b");
@@ -241,6 +258,41 @@ class JdbcObservationExecutorTest {
 
         public void setBucket(String bucket) {
             this.bucket = bucket;
+        }
+    }
+
+    @JdbcEntity(table = "ft_order", keyColumns = {"id"})
+    static final class ObservedOrder {
+
+        private Long id;
+
+        @JdbcColumn("tenant_id")
+        private Long tenantId;
+
+        private String status;
+
+        public Long getId() {
+            return id;
+        }
+
+        public void setId(Long id) {
+            this.id = id;
+        }
+
+        public Long getTenantId() {
+            return tenantId;
+        }
+
+        public void setTenantId(Long tenantId) {
+            this.tenantId = tenantId;
+        }
+
+        public String getStatus() {
+            return status;
+        }
+
+        public void setStatus(String status) {
+            this.status = status;
         }
     }
 

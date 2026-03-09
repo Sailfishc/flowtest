@@ -36,6 +36,8 @@
 - The primary user-facing example and manual now recommend `.watch(...) + .verify(ctx -> { ... }) + .run()` instead of `observe(...) + fragmented then(...) + .execute(executor)`.
 - Spring Boot integration examples and docs now recommend automatic executor resolution from the test framework integration instead of implementing `ScenarioExecutorProvider`.
 - Fixture-backed dynamic-table observation now auto-derives complete identity route predicates, including composite-key cases, for safer diff/cleanup targeting.
+- Watch-only entity observations now auto-register entity metadata on first use, so `watch(w -> w.entity(Foo.class))` works without upfront `registerEntity(Foo.class)`.
+- Copyable Spring Boot/JUnit5/TestNG examples now align with that rule and keep `JdbcObservationRegistry` focused on watch-only tables plus explicit overrides.
 
 ## Validation
 - Main `v2` command: `mvn -f flowtest-v2/pom.xml test`

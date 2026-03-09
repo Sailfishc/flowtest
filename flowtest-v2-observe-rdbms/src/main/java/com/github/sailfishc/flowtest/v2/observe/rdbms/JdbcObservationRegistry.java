@@ -456,6 +456,12 @@ public final class JdbcObservationRegistry {
             if (byType != null) {
                 return byType;
             }
+            JdbcEntityRegistration registration = registerEntityIfAbsent(observation.getResourceType());
+            JdbcObservedResource autoRegistered = resourcesByType.get(observation.getResourceType());
+            if (autoRegistered != null) {
+                return autoRegistered;
+            }
+            throw new IllegalStateException("Failed to register observed entity " + registration.getEntityType().getName());
         }
         JdbcObservedResource byName = resourcesByName.get(observation.getResourceName());
         if (byName == null) {
