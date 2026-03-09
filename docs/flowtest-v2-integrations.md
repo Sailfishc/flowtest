@@ -308,6 +308,20 @@ That example shows:
 - `watch(w -> w.fixture(user).table(...))` mixing fixture-backed and watch-only resources
 - default cleanup removing both the fixture row and the inserted dynamic-table row
 
+### Complete Spring Boot + TestNG Single-Table Fixture + Sharded Dynamic Entity Reference Example
+
+Use `flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicEntityReferenceSpringBootTestNgExampleTest.java`
+when you want the same business scenario, but prefer typed observation:
+- `watch(w -> w.fixture(user).entity(TradeOrderEntity.class)...)`
+- entity metadata inferred from `@TableName`, `@TableId`, and `@JdbcDynamicTable`
+- no upfront `registerEntity(...)` or `registerTable(...)` for the order resource
+
+That example shows:
+- the same single-table fixture + dynamic sharded insert flow as the table-based reference
+- `ctx.entity(TradeOrderEntity.class)` assertions instead of `ctx.table("ft_trade_order")`
+- an empty `JdbcObservationRegistry` bean to make the auto-inference path explicit
+- when `entity(...)` can reduce manual registry wiring compared with `table(...)`
+
 ### Complete Spring Boot + TestNG Multi-DataSource Example
 
 Use `flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java`

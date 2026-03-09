@@ -324,6 +324,125 @@ ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
 - `ctx.fixture(handle).before()/after()`：fixture 执行前后状态
 - `ctx.table("...")` / `ctx.entity(...)`：diff 后的资源变化
 
+### 5.1 数据库断言怎么写
+
+对数据库变化做断言时，推荐优先使用：
+
+- `.verify(ctx -> { ... })`
+- `ctx.table("...")` 或 `ctx.entity(...)`
+- `assertThat(...)`
+
+`ResourceVerifyContext` 统一提供这些能力：
+
+- `insertedCount()` / `deletedCount()` / `modifiedCount()`
+- `insertedRows()` / `deletedRows()` / `modifiedRows()`
+- `insertedOne()` / `deletedOne()` / `modifiedOne()`
+
+常见写法如下。
+
+**新增**
+
+```java
+.verify(ctx -> {
+    assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
+    assertThat(ctx.table("ft_order").insertedOne().getColumn("id")).isEqualTo(10L);
+    assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
+})
+```
+
+如果你观察的是实体，也可以直接写：
+
+```java
+.verify(ctx -> {
+    assertThat(ctx.entity(OrderEntity.class).insertedCount()).isEqualTo(1L);
+    assertThat(ctx.entity(OrderEntity.class).insertedOne().getColumn("status")).isEqualTo("CREATED");
+})
+```
+
+**修改**
+
+```java
+.verify(ctx -> {
+    assertThat(ctx.table("ft_user").modifiedCount()).isEqualTo(1L);
+    assertThat(ctx.table("ft_user").modifiedOne().before().getColumn("balance")).isEqualTo(100L);
+    assertThat(ctx.table("ft_user").modifiedOne().after().getColumn("balance")).isEqualTo(80L);
+})
+```
+
+**删除**
+
+```java
+.verify(ctx -> {
+    assertThat(ctx.table("ft_order").deletedCount()).isEqualTo(1L);
+    assertThat(ctx.table("ft_order").deletedOne().getColumn("id")).isEqualTo(10L);
+})
+```
+
+**多条数据**
+
+```java
+.verify(ctx -> {
+    assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(2L);
+    assertThat(ctx.table("ft_order").insertedRows())
+        .extracting(row -> row.getColumn("status"))
+        .containsExactly("CREATED", "CREATED");
+})
+```
+
+如果结果顺序不稳定，改用 `containsExactlyInAnyOrder(...)`，或者直接：
+
+```java
+.verify(ctx -> {
+    assertThat(ctx.table("ft_order").insertedRows())
+        .anySatisfy(row -> {
+            assertThat(row.getColumn("id")).isEqualTo(101L);
+            assertThat(row.getColumn("status")).isEqualTo("CREATED");
+        });
+})
+```
+
+**混合断言**
+
+如果同一个场景里既要看返回值，又要看 fixture 和表变化，推荐把断言放在一个 `verify` 里：
+
+```java
+.verify(ctx -> {
+    ctx.success();
+    assertThat(ctx.result()).isEqualTo(10L);
+    assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(80L);
+    assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
+    assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
+})
+```
+
+### 5.2 什么时候用 `.then(...)`
+
+`.then(...)` 仍然适合简单、模板化的断言，尤其是只关心计数时：
+
+```java
+.then(t -> t
+    .expectNoException()
+    .inserted("ft_order", 1)
+    .modified(TestUser.class.getName(), 1))
+```
+
+如果你偏好声明式的行级断言，也可以配合 `RowAssertions` / `ModifiedRowAssertions`：
+
+```java
+.then(t -> t
+    .insertedRow("ft_order", RowAssertions.columns(
+        "id", 10L,
+        "status", "CREATED",
+        "tenant_id", 100L
+    ))
+    .modifiedRow("ft_user", ModifiedRowAssertions.changed("balance", 100L, 80L)))
+```
+
+推荐收敛规则：
+
+- 简单计数断言：`.then(...)` 可以继续用
+- 混合场景、复杂场景、跨资源场景：优先 `.verify(ctx -> { ... })`
+
 完整可运行版本见：
 
 - [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
@@ -854,6 +973,8 @@ private String bucket;
   - [FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
 - Spring Boot + TestNG + 单表 fixture + 分库分表动态表参考：
   - [FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest.java)
+- Spring Boot + TestNG + 单表 fixture + 分库分表动态实体参考：
+  - [FlowTestV2ShardedDynamicEntityReferenceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicEntityReferenceSpringBootTestNgExampleTest.java)
 
 ## 15. 下一步阅读
 

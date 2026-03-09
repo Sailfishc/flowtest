@@ -46,6 +46,8 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Updated JDBC observation resolution so typed watch-only resources (`watch(w -> w.entity(Foo.class))`) auto-register entity metadata on first use rather than requiring upfront `registerEntity(Foo.class)`.
 - Updated Spring Boot, JUnit 5, TestNG, and integration-guide examples to remove redundant `registerEntity(...)` calls where the entity is only used via fixture-backed or typed observation paths.
 - Added a new Spring Boot + TestNG reference example for the common mixed scenario: single-table fixture data in `given(...)`, empty sharded dynamic table before `act`, and act-only insert into the resolved physical shard table.
+- Added a paired typed-entity version of that reference example so docs can now contrast `watch(...table(...))` versus `watch(...entity(...))` for the same sharded dynamic-table business flow.
+- Expanded the user manual with a practical database-assertion cookbook covering inserted / modified / deleted / multi-row verification and when to prefer `.verify(...)` versus `.then(...)`.
 - Rewrote the root `README.md` as a V2-first onboarding document, centered on `watch(...) + verify(ctx -> { ... }) + run()`, with V1 explicitly positioned as legacy.
 
 ## Active Decisions

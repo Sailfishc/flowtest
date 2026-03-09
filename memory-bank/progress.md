@@ -39,6 +39,8 @@
 - Watch-only entity observations now auto-register entity metadata on first use, so `watch(w -> w.entity(Foo.class))` works without upfront `registerEntity(Foo.class)`.
 - Copyable Spring Boot/JUnit5/TestNG examples now align with that rule and keep `JdbcObservationRegistry` focused on watch-only tables plus explicit overrides.
 - `flowtest-v2-testng` now also includes a dedicated reference example for `given(single-table fixture) + act-only insert into sharded dynamic table` using Spring Boot, TestNG, MyBatis-Plus, and multi-datasource routing.
+- `flowtest-v2-testng` now also includes a typed-entity variant of that reference example, showing the zero-registration path for `watch(w -> w.entity(Foo.class))`.
+- The user manual now includes a concrete assertion cookbook for common database change checks, centered on `verify(ctx -> { ... })` with `then(...)` positioned as the lightweight alternative for simple count-style expectations.
 - The root `README.md` now introduces the project from a V2 perspective and directs new users toward the observation-first DSL plus the dedicated user manual/integration guide.
 
 ## Validation
