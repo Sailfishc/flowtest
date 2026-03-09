@@ -11,5 +11,12 @@ public interface FixtureExecution {
 
     <T> T reload(FixtureHandle<T> handle) throws Exception;
 
+    /**
+     * Describes which bean properties should participate in whole-state fixture verification.
+     */
+    default <T> FixtureStateMetadata describe(FixtureHandle<T> handle) {
+        return FixtureStateMetadata.introspect(handle.getType());
+    }
+
     void cleanup() throws Exception;
 }

@@ -4,6 +4,7 @@ import com.github.sailfishc.flowtest.v2.fixture.DataFiller;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecution;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureMaterializer;
+import com.github.sailfishc.flowtest.v2.fixture.FixtureStateMetadata;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.FlowTestDataSourceRegistry;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntityRegistration;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
@@ -11,11 +12,17 @@ import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
 
 import javax.sql.DataSource;
+import java.beans.BeanInfo;
+import java.beans.IntrospectionException;
+import java.beans.Introspector;
+import java.beans.PropertyDescriptor;
 import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * JDBC-backed fixture executor with pluggable entity adapters.
@@ -188,6 +195,19 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
         }
 
         @Override
+        public <T> FixtureStateMetadata describe(FixtureHandle<T> handle) {
+            if (observationRegistry == null) {
+                return FixtureExecution.super.describe(handle);
+            }
+            JdbcEntityRegistration registration = observationRegistry.getEntityRegistrations().get(handle.getType());
+            if (registration == null) {
+                return FixtureExecution.super.describe(handle);
+            }
+            return FixtureStateMetadata.of(handle.getType(),
+                comparableProperties(handle.getType(), registration.getIgnoredProperties()));
+        }
+
+        @Override
         public void cleanup() throws Exception {
             if (cleaned) {
                 return;
@@ -210,6 +230,25 @@ public final class JdbcFixtureExecutor implements FixtureExecutor {
                 if (connection != null) {
                     connection.close();
                 }
+            }
+        }
+
+        private Set<String> comparableProperties(Class<?> entityType, Set<String> ignoredProperties) {
+            try {
+                BeanInfo beanInfo = Introspector.getBeanInfo(entityType, Object.class);
+                Set<String> properties = new LinkedHashSet<String>();
+                for (PropertyDescriptor descriptor : beanInfo.getPropertyDescriptors()) {
+                    if (descriptor.getReadMethod() == null || descriptor.getWriteMethod() == null) {
+                        continue;
+                    }
+                    if (ignoredProperties.contains(descriptor.getName())) {
+                        continue;
+                    }
+                    properties.add(descriptor.getName());
+                }
+                return properties;
+            } catch (IntrospectionException ex) {
+                throw new IllegalArgumentException("Failed to inspect bean properties for " + entityType.getName(), ex);
             }
         }
 

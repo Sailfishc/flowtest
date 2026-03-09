@@ -42,6 +42,8 @@
 - `flowtest-v2-testng` now also includes a typed-entity variant of that reference example, showing the zero-registration path for `watch(w -> w.entity(Foo.class))`.
 - The user manual now includes a concrete assertion cookbook for common database change checks, centered on `verify(ctx -> { ... })` with `then(...)` positioned as the lightweight alternative for simple count-style expectations.
 - The root `README.md` now introduces the project from a V2 perspective and directs new users toward the observation-first DSL plus the dedicated user manual/integration guide.
+- `FixtureVerifyContext` now supports whole-state fixture assertions through `matchesAfter(FixtureStatePatch...)`, using before-state plus explicit overrides and optional ignores to catch unintended field changes with less test code.
+- `FixtureStatePatch` now also supports Java 8 getter method references for `.set(...)` and `.ignore(...)`, avoiding stringly-typed property names in the recommended API.
 
 ## Validation
 - Main `v2` command: `mvn -f flowtest-v2/pom.xml test`

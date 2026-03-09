@@ -49,6 +49,8 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Added a paired typed-entity version of that reference example so docs can now contrast `watch(...table(...))` versus `watch(...entity(...))` for the same sharded dynamic-table business flow.
 - Expanded the user manual with a practical database-assertion cookbook covering inserted / modified / deleted / multi-row verification and when to prefer `.verify(...)` versus `.then(...)`.
 - Rewrote the root `README.md` as a V2-first onboarding document, centered on `watch(...) + verify(ctx -> { ... }) + run()`, with V1 explicitly positioned as legacy.
+- Added fixture whole-state verification through `ctx.fixture(handle).matchesAfter(FixtureStatePatch.of(...).set(...).ignore(...))`, backed by fixture metadata so unmanaged/ignored properties can stay out of comparison.
+- Added type-safe getter-reference support for `FixtureStatePatch`, so the recommended form is now `.set(Foo::getBar, ...)` / `.ignore(Foo::getBaz)` rather than string property names.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
@@ -65,6 +67,8 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - For MyBatis-Plus entities, `@JdbcEntity` is no longer required in common cases; `@JdbcDynamicTable` still remains the explicit hook for FlowTest physical-table resolution.
 - The recommended documentation reading order is now: `flowtest-v2-user-manual.md` first, then `flowtest-v2-integrations.md` for integration-specific details, then `flowtest-v2-architecture.md` for model rationale.
 - The current recommended user-facing assertion path is context-based verification (`.verify(ctx -> { ... })`); the older declarative `.then(...)` API remains for compatibility and simple count-style checks.
+- For fixture-backed mutation scenarios where the intent is “only these fields changed”, whole-state verification should now prefer `matchesAfter(...)` over manually asserting each unchanged field.
+- Within `matchesAfter(...)`, getter method references are now the preferred property selector because they are refactor-safe and make patch definitions less brittle.
 - The current recommended user-facing declaration path is `.watch(...) + .verify(ctx -> { ... }) + .run()` under test-framework integration; the older `.observe(...) + .then(...)` and explicit `.execute(executor)` path remains as a lower-level compatibility layer.
 - The registry should now be explained primarily as an override/configuration point for watch-only tables and non-standard mappings; typed entity observations should default to annotation/convention inference.
 - For Spring Boot integration, the recommended path is now zero-provider: `@FlowTestV2Test` for JUnit 5 or `@Listeners(FlowTestV2Listener.class)` for TestNG, then `.run()`; `ScenarioExecutorProvider` is compatibility-only.

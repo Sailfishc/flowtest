@@ -3,6 +3,7 @@ package com.github.sailfishc.flowtest.v2.runtime;
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecution;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
+import com.github.sailfishc.flowtest.v2.fixture.FixtureStateMetadata;
 import com.github.sailfishc.flowtest.v2.assertion.ModifiedRowAssertions;
 import com.github.sailfishc.flowtest.v2.assertion.RowAssertions;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
@@ -167,6 +168,83 @@ class ScenarioExecutorTest {
     }
 
     @Test
+    void shouldVerifyFixtureAfterStateFromBeforePlusPatch() throws Exception {
+        final FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
+        RecordingFixtureExecutor fixtureExecutor = new RecordingFixtureExecutor(
+            user,
+            new TestUser(1L, "Alice", 100L, "v1"),
+            new TestUser(1L, "Alice", 80L, "v1")
+        );
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(Arrays.asList(
+            snapshot(TestUser.class.getName()),
+            snapshot(TestUser.class.getName())
+        ));
+        ScenarioExecutor executor = new ScenarioExecutor(fixtureExecutor, observationExecutor);
+
+        FlowTestV2.scenario("fixture-patch")
+            .given(g -> g.persist(user, nameTrait("Alice")))
+            .watch(w -> w.fixture(user))
+            .when(() -> "ok")
+            .verify(ctx -> ctx.fixture(user).matchesAfter(
+                FixtureStatePatch.of(TestUser.class)
+                    .set(TestUser::getBalance, 80L)))
+            .execute(executor);
+
+        assertThat(fixtureExecutor.isReloaded()).isTrue();
+    }
+
+    @Test
+    void shouldDetectUnexpectedFixtureFieldChangeOutsidePatch() throws Exception {
+        final FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
+        RecordingFixtureExecutor fixtureExecutor = new RecordingFixtureExecutor(
+            user,
+            new TestUser(1L, "Alice", 100L, "v1"),
+            new TestUser(1L, "Bob", 80L, "v1")
+        );
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(Arrays.asList(
+            snapshot(TestUser.class.getName()),
+            snapshot(TestUser.class.getName())
+        ));
+        ScenarioExecutor executor = new ScenarioExecutor(fixtureExecutor, observationExecutor);
+
+        assertThatThrownBy(() -> FlowTestV2.scenario("fixture-patch-mismatch")
+            .given(g -> g.persist(user, nameTrait("Alice")))
+            .watch(w -> w.fixture(user))
+            .when(() -> "ok")
+            .verify(ctx -> ctx.fixture(user).matchesAfter(
+                FixtureStatePatch.of(TestUser.class)
+                    .set(TestUser::getBalance, 80L)))
+            .execute(executor))
+            .isInstanceOf(AssertionError.class)
+            .hasMessageContaining("name expected <Alice> but was <Bob>");
+    }
+
+    @Test
+    void shouldAllowIgnoringFixtureFieldsDuringWholeStateVerification() throws Exception {
+        final FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
+        RecordingFixtureExecutor fixtureExecutor = new RecordingFixtureExecutor(
+            user,
+            new TestUser(1L, "Alice", 100L, "v1"),
+            new TestUser(1L, "Alice", 80L, "v2")
+        );
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(Arrays.asList(
+            snapshot(TestUser.class.getName()),
+            snapshot(TestUser.class.getName())
+        ));
+        ScenarioExecutor executor = new ScenarioExecutor(fixtureExecutor, observationExecutor);
+
+        FlowTestV2.scenario("fixture-patch-ignore")
+            .given(g -> g.persist(user, nameTrait("Alice")))
+            .watch(w -> w.fixture(user))
+            .when(() -> "ok")
+            .verify(ctx -> ctx.fixture(user).matchesAfter(
+                FixtureStatePatch.of(TestUser.class)
+                    .set(TestUser::getBalance, 80L)
+                    .ignore(TestUser::getVersion)))
+            .execute(executor);
+    }
+
+    @Test
     void shouldAllowVerifyToHandleExpectedFailure() throws Exception {
         RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(Arrays.asList(
             snapshot("orders"),
@@ -294,6 +372,12 @@ class ScenarioExecutorTest {
                 }
 
                 @Override
+                public <T> FixtureStateMetadata describe(FixtureHandle<T> target) {
+                    return FixtureStateMetadata.of(target.getType(),
+                        Arrays.asList("id", "name", "balance", "version"));
+                }
+
+                @Override
                 public void cleanup() {
                     cleaned = true;
                 }
@@ -313,6 +397,8 @@ class ScenarioExecutorTest {
 
         private Long id;
         private String name;
+        private Long balance;
+        private String version;
 
         private TestUser() {
         }
@@ -320,6 +406,13 @@ class ScenarioExecutorTest {
         private TestUser(Long id, String name) {
             this.id = id;
             this.name = name;
+        }
+
+        private TestUser(Long id, String name, Long balance, String version) {
+            this.id = id;
+            this.name = name;
+            this.balance = balance;
+            this.version = version;
         }
 
         public Long getId() {
@@ -336,6 +429,22 @@ class ScenarioExecutorTest {
 
         public void setName(String name) {
             this.name = name;
+        }
+
+        public Long getBalance() {
+            return balance;
+        }
+
+        public void setBalance(Long balance) {
+            this.balance = balance;
+        }
+
+        public String getVersion() {
+            return version;
+        }
+
+        public void setVersion(String version) {
+            this.version = version;
         }
     }
 }

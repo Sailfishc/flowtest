@@ -415,6 +415,29 @@ ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
 })
 ```
 
+**基于 fixture before-state 的全字段断言**
+
+如果前面已经在 `given(...)` 里准备了 fixture，而你只关心少数字段发生变化，可以直接用 `matchesAfter(...)`：
+
+```java
+.verify(ctx -> {
+    ctx.success();
+    ctx.fixture(user).matchesAfter(
+        FixtureStatePatch.of(TestUser.class)
+            .set(TestUser::getBalance, 80L)
+            .ignore(TestUser::getUpdatedAt, TestUser::getVersion));
+    assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
+})
+```
+
+这段断言的语义是：
+
+- `balance` 应该变成 `80L`
+- `updatedAt`、`version` 不参与比较
+- 其余受管理的持久化字段默认都必须和 `before()` 保持一致
+
+这种写法比逐字段把 unchanged 列再写一遍更适合 fixture-backed 修改场景，也更容易发现“意外改了别的字段”的回归。
+
 ### 5.2 什么时候用 `.then(...)`
 
 `.then(...)` 仍然适合简单、模板化的断言，尤其是只关心计数时：
