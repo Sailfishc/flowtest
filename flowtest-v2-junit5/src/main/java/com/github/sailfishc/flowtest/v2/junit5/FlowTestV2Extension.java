@@ -12,6 +12,7 @@ import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationExecutor;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
+import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorResolutionSupport;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutors;
 import com.github.sailfishc.flowtest.v2.spec.ObservationExecutor;
 import org.junit.jupiter.api.extension.AfterEachCallback;
@@ -22,10 +23,21 @@ import org.junit.jupiter.api.extension.ParameterResolutionException;
 import org.junit.jupiter.api.extension.ParameterResolver;
 
 import javax.sql.DataSource;
-import java.lang.reflect.Field;
 
 /**
  * JUnit 5 extension that resolves {@link ScenarioExecutor} for test methods.
+ *
+ * <p>This extension automatically resolves ScenarioExecutor in the following order:</p>
+ * <ol>
+ *   <li>Builder configuration (if registered via {@code @RegisterExtension})</li>
+ *   <li>Spring ApplicationContext (if the test uses {@code @SpringBootTest})</li>
+ *   <li>Test class field of type ScenarioExecutor</li>
+ *   <li>{@link ScenarioExecutorProvider} implementation (deprecated)</li>
+ * </ol>
+ *
+ * <p>For Spring Boot tests with {@code @FlowTestV2Test}, simply annotate the class and
+ * the framework will automatically obtain ScenarioExecutor from the Spring container.
+ * No need to inject or implement any interface.</p>
  */
 public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachCallback, ParameterResolver {
 
@@ -85,66 +97,35 @@ public final class FlowTestV2Extension implements BeforeEachCallback, AfterEachC
     }
 
     private ScenarioExecutor createExecutor(ExtensionContext context) throws Exception {
+        // 1. Builder configuration (highest priority)
         if (scenarioExecutorFactory != null) {
             return requireExecutor(scenarioExecutorFactory.create(), "configured builder");
         }
+
         Object testInstance = context.getRequiredTestInstance();
-        if (testInstance instanceof ScenarioExecutorProvider) {
-            return requireExecutor(((ScenarioExecutorProvider) testInstance).createScenarioExecutor(),
-                ScenarioExecutorProvider.class.getName());
+
+        // 2. Try to get from Spring ApplicationContext
+        ScenarioExecutor fromSpring = ScenarioExecutorResolutionSupport.resolveFromSpringContext(context, testInstance);
+        if (fromSpring != null) {
+            return fromSpring;
         }
-        ScenarioExecutor fromField = findScenarioExecutor(testInstance);
+
+        // 3. Try to find a ScenarioExecutor field in the test class
+        ScenarioExecutor fromField = ScenarioExecutorResolutionSupport.findScenarioExecutor(testInstance);
         if (fromField != null) {
             return fromField;
         }
-        throw new IllegalStateException("No ScenarioExecutor available. Use @RegisterExtension with FlowTestV2Extension.builder() "
-            + "or implement " + ScenarioExecutorProvider.class.getName());
-    }
 
-    private ScenarioExecutor findScenarioExecutor(Object instance) throws IllegalAccessException {
-        ScenarioExecutor direct = findScenarioExecutorInInstance(instance);
-        if (direct != null) {
-            return direct;
+        // 4. Fallback to ScenarioExecutorProvider (deprecated)
+        ScenarioExecutor fromProvider = ScenarioExecutorResolutionSupport.resolveFromProvider(testInstance);
+        if (fromProvider != null) {
+            return requireExecutor(fromProvider, ScenarioExecutorProvider.class.getName());
         }
-        Object enclosing = getEnclosingInstance(instance);
-        if (enclosing != null) {
-            return findScenarioExecutorInInstance(enclosing);
-        }
-        return null;
-    }
 
-    private ScenarioExecutor findScenarioExecutorInInstance(Object instance) throws IllegalAccessException {
-        Class<?> type = instance.getClass();
-        while (type != null && type != Object.class) {
-            for (Field field : type.getDeclaredFields()) {
-                if (!ScenarioExecutor.class.isAssignableFrom(field.getType())) {
-                    continue;
-                }
-                field.setAccessible(true);
-                Object value = field.get(instance);
-                if (value != null) {
-                    return (ScenarioExecutor) value;
-                }
-            }
-            type = type.getSuperclass();
-        }
-        return null;
-    }
-
-    private Object getEnclosingInstance(Object testInstance) {
-        Class<?> type = testInstance.getClass();
-        if (type.getEnclosingClass() == null) {
-            return null;
-        }
-        try {
-            Field field = type.getDeclaredField("this$0");
-            field.setAccessible(true);
-            return field.get(testInstance);
-        } catch (NoSuchFieldException ex) {
-            return null;
-        } catch (IllegalAccessException ex) {
-            throw new IllegalStateException("Failed to access enclosing instance", ex);
-        }
+        throw new IllegalStateException("No ScenarioExecutor available. "
+            + "For Spring Boot tests, use @FlowTestV2Test. "
+            + "For non-Spring tests, use @RegisterExtension with FlowTestV2Extension.builder()...build(), "
+            + "or declare a ScenarioExecutor field.");
     }
 
     private ScenarioExecutor requireExecutor(ScenarioExecutor executor, String source) {

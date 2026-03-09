@@ -1,5 +1,6 @@
 package com.github.sailfishc.flowtest.v2.observe.rdbms;
 
+import com.github.sailfishc.flowtest.v2.spec.RouteScope;
 import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
 
 import java.beans.BeanInfo;
@@ -10,6 +11,7 @@ import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -90,6 +92,100 @@ public final class JdbcEntityRegistration {
         } catch (Exception ex) {
             throw new IllegalStateException("Failed to resolve dynamic table name for " + entityType.getName(), ex);
         }
+    }
+
+    /**
+     * Derives a {@link RouteScope} from the given entity instance's registered identity columns.
+     * This is used to generate exact-match WHERE conditions for fixture-backed observations.
+     *
+     * @param entity the materialized entity instance
+     * @return the derived route scope containing all key-column conditions, or {@code null}
+     *         if any identity value cannot be resolved
+     */
+    public RouteScope deriveIdentityRouteScope(Object entity) {
+        if (entity == null) {
+            return null;
+        }
+        List<String> keyColumns = identity.getKeyColumns();
+        RouteScope routeScope = RouteScope.empty();
+        try {
+            BeanInfo beanInfo = Introspector.getBeanInfo(entityType, Object.class);
+            for (String keyColumn : keyColumns) {
+                String propertyName = findPropertyNameForColumn(keyColumn);
+                if (propertyName == null) {
+                    return null;
+                }
+                PropertyDescriptor descriptor = findPropertyDescriptor(beanInfo, propertyName);
+                if (descriptor == null || descriptor.getReadMethod() == null) {
+                    return null;
+                }
+                Method readMethod = descriptor.getReadMethod();
+                readMethod.setAccessible(true);
+                Object value = readMethod.invoke(entity);
+                if (value == null) {
+                    return null;
+                }
+                routeScope = routeScope.append(com.github.sailfishc.flowtest.v2.spec.RouteCondition.eq(keyColumn, value));
+            }
+        } catch (Exception ex) {
+            throw new IllegalStateException(
+                "Failed to derive identity route scope from " + entityType.getName(), ex);
+        }
+        return routeScope;
+    }
+
+    private String findPropertyNameForColumn(String columnName) {
+        String lowerColumnName = columnName.toLowerCase();
+        for (Map.Entry<String, String> entry : propertyColumns.entrySet()) {
+            if (entry.getValue().toLowerCase().equals(lowerColumnName)) {
+                return entry.getKey();
+            }
+        }
+        if (findPropertyDescriptor(entityType, columnName) != null) {
+            return columnName;
+        }
+        String camelCase = toCamelCase(columnName);
+        if (findPropertyDescriptor(entityType, camelCase) != null) {
+            return camelCase;
+        }
+        return null;
+    }
+
+    private PropertyDescriptor findPropertyDescriptor(BeanInfo beanInfo, String propertyName) {
+        for (PropertyDescriptor descriptor : beanInfo.getPropertyDescriptors()) {
+            if (propertyName.equals(descriptor.getName())) {
+                return descriptor;
+            }
+        }
+        return null;
+    }
+
+    private PropertyDescriptor findPropertyDescriptor(Class<?> type, String propertyName) {
+        try {
+            BeanInfo beanInfo = Introspector.getBeanInfo(type, Object.class);
+            return findPropertyDescriptor(beanInfo, propertyName);
+        } catch (IntrospectionException ex) {
+            throw new IllegalStateException("Failed to inspect bean properties for " + type.getName(), ex);
+        }
+    }
+
+    private String toCamelCase(String columnName) {
+        StringBuilder builder = new StringBuilder();
+        boolean upperNext = false;
+        for (int i = 0; i < columnName.length(); i++) {
+            char c = columnName.charAt(i);
+            if (c == '_') {
+                upperNext = true;
+                continue;
+            }
+            if (upperNext) {
+                builder.append(Character.toUpperCase(c));
+                upperNext = false;
+            } else {
+                builder.append(c);
+            }
+        }
+        return builder.toString();
     }
 
     /**

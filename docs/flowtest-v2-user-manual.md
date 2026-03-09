@@ -318,7 +318,7 @@ ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
 
 完整可运行版本见：
 
-- [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
+- [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
 
 ## 6. 第四步：接入测试框架
 
@@ -329,35 +329,27 @@ ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
 1. 测试类继承 `AbstractTestNGSpringContextTests`
 2. 标注 `@SpringBootTest`
 3. 标注 `@Listeners(FlowTestV2Listener.class)`
-4. 实现 `ScenarioExecutorProvider`
-5. 返回 Spring 容器里的 `ScenarioExecutor`
-6. 在场景里直接调用 `.run()`
+4. 在场景里直接调用 `.run()`
+5. 需要直接访问执行器时，再注入 `ScenarioExecutor` 或使用 `@FlowTestV2Executor`
 
 ```java
 @SpringBootTest
 @Listeners(FlowTestV2Listener.class)
-public class OrderFlowTest extends AbstractTestNGSpringContextTests
-    implements ScenarioExecutorProvider {
-
-    @Autowired
-    private ScenarioExecutor springScenarioExecutor;
-
-    @Override
-    public ScenarioExecutor createScenarioExecutor() {
-        return springScenarioExecutor;
-    }
+public class OrderFlowTest extends AbstractTestNGSpringContextTests {
 }
 ```
+
+Spring Boot 场景下，`FlowTestV2Listener` 会自动从 `ApplicationContext` 解析 `ScenarioExecutor`。`ScenarioExecutorProvider` 仅作为兼容旧写法的 fallback，不再是推荐用法。
 
 `@FlowTestV2Executor` 现在是可选的。只有在你确实要直接访问当前 `ScenarioExecutor` 字段时再加；常规场景直接 `.run()` 即可。
 
 完整示例：
 
-- [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
+- [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
 
 ### 6.2 Spring Boot + JUnit 5
 
-Spring Boot 场景下，推荐直接注入 `ScenarioExecutor` 或者使用 `FlowTestV2Extension`。
+Spring Boot 场景下，推荐直接标注 `@FlowTestV2Test` 然后调用 `.run()`。扩展会自动从 Spring `ApplicationContext` 获取 `ScenarioExecutor`。只有在你确实需要手动访问执行器时，才额外注入 `ScenarioExecutor` 参数或字段。
 
 纯 JUnit 5 builder 方式：
 
@@ -482,7 +474,7 @@ FlowTestV2.scenario("auto-derive-dynamic-table")
 
 完整示例：
 
-- [FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
+- [FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
 
 ## 9. 多数据源
 
@@ -529,8 +521,8 @@ flowtest:
 
 完整示例：
 
-- [FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java)
-- [FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
+- [FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java)
+- [FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
 
 ## 10. Cleanup 策略
 
@@ -845,13 +837,13 @@ private String bucket;
 建议直接从这些测试文件抄起：
 
 - Spring Boot + TestNG 最小接入：
-  - [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
+  - [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
 - Spring Boot + TestNG + 多数据源：
-  - [FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java)
+  - [FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java)
 - Spring Boot + TestNG + MyBatis-Plus + 动态表：
-  - [FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
+  - [FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
 - Spring Boot + TestNG + MyBatis-Plus + 动态表 + 多数据源：
-  - [FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
+  - [FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
 
 ## 15. 下一步阅读
 

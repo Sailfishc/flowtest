@@ -10,8 +10,6 @@ import com.baomidou.mybatisplus.extension.plugins.inner.DynamicTableNameInnerInt
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcDynamicTable;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
 import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Listener;
 import org.apache.ibatis.annotations.Mapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,14 +37,10 @@ import static org.assertj.core.api.Assertions.assertThat;
     }
 )
 @Listeners(FlowTestV2Listener.class)
-public class FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest extends AbstractTestNGSpringContextTests
-    implements ScenarioExecutorProvider {
+public class FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest extends AbstractTestNGSpringContextTests {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
-
-    @Autowired
-    private ScenarioExecutor springScenarioExecutor;
 
     @Autowired
     private DynamicOrderService dynamicOrderService;
@@ -81,11 +75,6 @@ public class FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest extend
         assertThat(queryForLong("select count(*) from ft_mp_order_dynamic_a")).isEqualTo(0L);
         assertThat(queryForLong("select count(*) from ft_mp_order_dynamic_b")).isEqualTo(1L);
         assertThat(queryForString("select status from ft_mp_order_dynamic_b where id = 702")).isEqualTo("HISTORICAL");
-    }
-
-    @Override
-    public ScenarioExecutor createScenarioExecutor() {
-        return springScenarioExecutor;
     }
 
     private long queryForLong(String sql) {

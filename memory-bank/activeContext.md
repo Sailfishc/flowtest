@@ -40,6 +40,9 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Added thread-bound executor support through `ScenarioExecutors` plus `.run()` on `ScenarioPlan`/`CompiledScenario`, so JUnit 5 and TestNG integrations can execute scenarios without explicit `.execute(executor)` in the common path.
 - Updated JUnit 5 and TestNG integrations to bind the active `ScenarioExecutor` into the current thread before each test and clear it afterward.
 - Updated JUnit 5, TestNG, and Spring Boot example tests to use `.watch(...) + .verify(...) + .run()` as the primary DSL path.
+- Updated JUnit 5 and TestNG integrations to resolve `ScenarioExecutor` from Spring `ApplicationContext` reflectively, so Spring Boot tests no longer need to implement `ScenarioExecutorProvider` in the recommended path.
+- Updated the user manual, integration guide, and Spring Boot example tests to remove `ScenarioExecutorProvider` from recommended Spring Boot usage; it remains only as a deprecated compatibility fallback.
+- Tightened fixture-backed observation enrichment so dynamic-table fixtures derive both physical-table route and complete identity route predicates, including composite-key handling and regression coverage.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
@@ -57,6 +60,7 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - The recommended documentation reading order is now: `flowtest-v2-user-manual.md` first, then `flowtest-v2-integrations.md` for integration-specific details, then `flowtest-v2-architecture.md` for model rationale.
 - The current recommended user-facing assertion path is context-based verification (`.verify(ctx -> { ... })`); the older declarative `.then(...)` API remains for compatibility and simple count-style checks.
 - The current recommended user-facing declaration path is `.watch(...) + .verify(ctx -> { ... }) + .run()` under test-framework integration; the older `.observe(...) + .then(...)` and explicit `.execute(executor)` path remains as a lower-level compatibility layer.
+- For Spring Boot integration, the recommended path is now zero-provider: `@FlowTestV2Test` for JUnit 5 or `@Listeners(FlowTestV2Listener.class)` for TestNG, then `.run()`; `ScenarioExecutorProvider` is compatibility-only.
 
 ## Next Likely Steps
 - Consider transaction-aware `ROLLBACK` support for Spring-managed tests.

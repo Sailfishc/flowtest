@@ -136,6 +136,40 @@ public final class ObservationSpec {
         );
     }
 
+    /**
+     * Returns a copy of this observation with the given route scope.
+     * Used for runtime enrichment when fixture-backed dynamic table routes are derived.
+     */
+    public ObservationSpec withRouteScope(RouteScope scope) {
+        return new ObservationSpec(
+            this.resourceKind,
+            this.observationMode,
+            this.resourceName,
+            this.resourceType,
+            this.tableRouteScope,
+            scope,
+            this.routeRequired,
+            this.fixtureHandle
+        );
+    }
+
+    /**
+     * Returns a copy of this observation with both table route scope and route scope.
+     * Used for runtime enrichment when fixture-backed dynamic table routes are derived.
+     */
+    public ObservationSpec withTableRouteScopeAndRouteScope(TableRouteScope tableRouteScope, RouteScope routeScope) {
+        return new ObservationSpec(
+            this.resourceKind,
+            this.observationMode,
+            this.resourceName,
+            this.resourceType,
+            tableRouteScope,
+            routeScope,
+            this.routeRequired,
+            this.fixtureHandle
+        );
+    }
+
     private static String requireText(String text, String message) {
         if (text == null || text.trim().isEmpty()) {
             throw new IllegalArgumentException(message);

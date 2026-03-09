@@ -11,8 +11,6 @@ import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcDynamicTable;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
 import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Listener;
@@ -50,7 +48,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 )
 @Listeners(FlowTestV2Listener.class)
 public class FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest
-    extends AbstractTestNGSpringContextTests implements ScenarioExecutorProvider {
+    extends AbstractTestNGSpringContextTests {
 
     @Autowired
     @Qualifier("orderJdbcTemplate")
@@ -59,9 +57,6 @@ public class FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExa
     @Autowired
     @Qualifier("accountJdbcTemplate")
     private JdbcTemplate accountJdbcTemplate;
-
-    @Autowired
-    private ScenarioExecutor springScenarioExecutor;
 
     @Autowired
     private CompositeOrderService compositeOrderService;
@@ -105,11 +100,6 @@ public class FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExa
         assertThat(queryForLong(accountJdbcTemplate, "select count(*) from ft_user")).isEqualTo(0L);
         assertThat(queryForLong(orderJdbcTemplate, "select count(*) from ft_mp_order_dynamic_a")).isEqualTo(0L);
         assertThat(queryForLong(orderJdbcTemplate, "select count(*) from ft_mp_order_dynamic_b")).isEqualTo(0L);
-    }
-
-    @Override
-    public ScenarioExecutor createScenarioExecutor() {
-        return springScenarioExecutor;
     }
 
     private long queryForLong(JdbcTemplate jdbcTemplate, String sql) {

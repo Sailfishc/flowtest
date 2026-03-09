@@ -35,27 +35,19 @@ void shouldCreateOrder() throws Exception {
 }
 ```
 
-You can also annotate the class with `@FlowTestV2Test` and implement `ScenarioExecutorProvider`.
+In Spring Boot tests, you can also annotate the class with `@FlowTestV2Test` and call `.run()` directly. The extension will resolve `ScenarioExecutor` from the Spring `ApplicationContext` automatically.
 
 ## TestNG
 
-Register `FlowTestV2Listener`, implement `ScenarioExecutorProvider`, and call `.run()`.
+Register `FlowTestV2Listener` and call `.run()`. In Spring Boot tests, the listener resolves `ScenarioExecutor` from the Spring container automatically.
 
 ```java
 @Listeners(FlowTestV2Listener.class)
-public class OrderFlowTest implements ScenarioExecutorProvider {
-
-    @Autowired
-    private ScenarioExecutor springScenarioExecutor;
-
-    @Override
-    public ScenarioExecutor createScenarioExecutor() {
-        return springScenarioExecutor;
-    }
+public class OrderFlowTest extends AbstractTestNGSpringContextTests {
 }
 ```
 
-`@FlowTestV2Executor` is now optional. Keep it only when you explicitly need direct field access to the current executor.
+`@FlowTestV2Executor` is optional. Keep it only when you explicitly need direct field access to the current executor. `ScenarioExecutorProvider` remains supported only as a backward-compatible fallback.
 
 ## Spring Boot
 
@@ -247,7 +239,7 @@ This is the lowest-level path that still avoids handwritten JDBC fixture adapter
 
 ### Complete Spring Boot + TestNG Example
 
-Use `flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java`
+Use `flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java`
 as the copyable reference. It shows the full wiring:
 
 1. Add test dependencies:
@@ -259,21 +251,20 @@ as the copyable reference. It shows the full wiring:
    - `h2`
 2. Make the test class extend `AbstractTestNGSpringContextTests`.
 3. Add `@SpringBootTest` and `@Listeners(FlowTestV2Listener.class)`.
-4. Implement `ScenarioExecutorProvider` and return the Spring-managed `ScenarioExecutor`.
-5. Call `.run()` directly in the scenario after the listener has bound the executor.
-6. Register `JdbcObservationRegistry` in a test configuration. Only special persistence cases still need a custom `FixtureAdapterRegistry`.
-7. Build the scenario with `given -> watch -> when -> verify`, then finish with `.run()`.
+4. Register `JdbcObservationRegistry` in a test configuration. Only special persistence cases still need a custom `FixtureAdapterRegistry`.
+5. Build the scenario with `given -> watch -> when -> verify`, then finish with `.run()`.
+6. If you need direct executor access for a special case, inject `ScenarioExecutor` or use `@FlowTestV2Executor`. Do not implement `ScenarioExecutorProvider` in new Spring Boot tests.
 
 The example uses:
 - fixture-backed `ft_user`
 - watch-only sharded `ft_order`
 - TestNG listener-based default executor binding
-- Spring Boot auto-configured `ScenarioExecutor`
+- Spring Boot auto-configured `ScenarioExecutor` resolved without provider boilerplate
 - row-level assertion for the inserted order row
 
 ### Complete Spring Boot + TestNG + MyBatis-Plus Dynamic Table Example
 
-Use `flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java`
+Use `flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java`
 when you need to combine:
 - Spring Boot
 - TestNG
@@ -291,7 +282,7 @@ That example shows:
 
 ### Complete Spring Boot + TestNG + MyBatis-Plus Dynamic Table Multi-DataSource Example
 
-Use `flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java`
+Use `flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java`
 when you need one scenario to touch:
 - a fixture-backed table on one datasource
 - a MyBatis-Plus dynamic table on another datasource
@@ -305,7 +296,7 @@ That example shows:
 
 ### Complete Spring Boot + TestNG Multi-DataSource Example
 
-Use `flowtest-v2/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java`
+Use `flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java`
 when you need fixture and observation to span multiple datasource beans.
 
 That example shows:

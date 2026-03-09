@@ -3,8 +3,6 @@ package com.github.sailfishc.flowtest.v2.testng.springboot;
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
 import com.github.sailfishc.flowtest.v2.testng.FlowTestV2Listener;
@@ -41,8 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
     }
 )
 @Listeners(FlowTestV2Listener.class)
-public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends AbstractTestNGSpringContextTests
-    implements ScenarioExecutorProvider {
+public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends AbstractTestNGSpringContextTests {
 
     @Autowired
     @Qualifier("orderDs")
@@ -51,9 +48,6 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
     @Autowired
     @Qualifier("accountDs")
     private DataSource accountDataSource;
-
-    @Autowired
-    private ScenarioExecutor springScenarioExecutor;
 
     @BeforeMethod
     public void setUpSchema() throws Exception {
@@ -92,11 +86,6 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
 
         assertThat(queryForLong(accountDataSource, "select count(*) from ft_user")).isEqualTo(0L);
         assertThat(queryForLong(orderDataSource, "select count(*) from ft_order")).isEqualTo(0L);
-    }
-
-    @Override
-    public ScenarioExecutor createScenarioExecutor() {
-        return springScenarioExecutor;
     }
 
     private FixtureTrait<TestUser> idTrait(final Long id) {

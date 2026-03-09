@@ -2,6 +2,7 @@ package com.github.sailfishc.flowtest.v2.testng;
 
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutor;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorProvider;
+import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutorResolutionSupport;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutors;
 import org.testng.IInvokedMethod;
 import org.testng.IInvokedMethodListener;
@@ -13,6 +14,17 @@ import java.util.List;
 
 /**
  * TestNG listener that resolves and injects {@link ScenarioExecutor}.
+ *
+ * <p>This listener automatically resolves ScenarioExecutor in the following order:</p>
+ * <ol>
+ *   <li>Spring ApplicationContext (if the test is a Spring Boot test)</li>
+ *   <li>Test class field of type ScenarioExecutor</li>
+ *   <li>{@link ScenarioExecutorProvider} implementation (deprecated)</li>
+ * </ol>
+ *
+ * <p>For Spring Boot tests, simply annotate with {@code @Listeners(FlowTestV2Listener.class)}
+ * and the framework will automatically obtain ScenarioExecutor from the Spring container.
+ * No need to inject or implement any interface.</p>
  */
 public final class FlowTestV2Listener implements IInvokedMethodListener {
 
@@ -30,9 +42,10 @@ public final class FlowTestV2Listener implements IInvokedMethodListener {
         try {
             ScenarioExecutor executor = resolveExecutor(instance);
             if (executor == null) {
-                throw new IllegalStateException("No ScenarioExecutor available. Implement "
-                    + ScenarioExecutorProvider.class.getName()
-                    + " or assign an existing ScenarioExecutor field before the test method runs.");
+                throw new IllegalStateException("No ScenarioExecutor available. "
+                    + "For Spring Boot tests, ensure @SpringBootTest is configured. "
+                    + "For non-Spring tests, declare a ScenarioExecutor field or implement "
+                    + ScenarioExecutorProvider.class.getName() + " (deprecated).");
             }
             List<InjectedField> injectedFields = injectAnnotatedFields(instance, executor);
             ScenarioExecutors.bind(executor);
@@ -66,39 +79,20 @@ public final class FlowTestV2Listener implements IInvokedMethodListener {
     }
 
     private ScenarioExecutor resolveExecutor(Object instance) throws Exception {
-        if (instance instanceof ScenarioExecutorProvider) {
-            return ((ScenarioExecutorProvider) instance).createScenarioExecutor();
+        // 1. Try to get from Spring ApplicationContext (highest priority)
+        ScenarioExecutor fromSpring = ScenarioExecutorResolutionSupport.resolveFromSpringContext(null, instance);
+        if (fromSpring != null) {
+            return fromSpring;
         }
-        ScenarioExecutor direct = findScenarioExecutor(instance);
-        if (direct != null) {
-            return direct;
-        }
-        Object enclosing = getEnclosingInstance(instance);
-        if (enclosing instanceof ScenarioExecutorProvider) {
-            return ((ScenarioExecutorProvider) enclosing).createScenarioExecutor();
-        }
-        if (enclosing != null) {
-            return findScenarioExecutor(enclosing);
-        }
-        return null;
-    }
 
-    private ScenarioExecutor findScenarioExecutor(Object instance) throws IllegalAccessException {
-        Class<?> type = instance.getClass();
-        while (type != null && type != Object.class) {
-            for (Field field : type.getDeclaredFields()) {
-                if (!ScenarioExecutor.class.isAssignableFrom(field.getType())) {
-                    continue;
-                }
-                field.setAccessible(true);
-                Object value = field.get(instance);
-                if (value != null) {
-                    return (ScenarioExecutor) value;
-                }
-            }
-            type = type.getSuperclass();
+        // 2. Try to find a ScenarioExecutor field in the test class
+        ScenarioExecutor fromField = ScenarioExecutorResolutionSupport.findScenarioExecutor(instance);
+        if (fromField != null) {
+            return fromField;
         }
-        return null;
+
+        // 3. Fallback to ScenarioExecutorProvider (deprecated)
+        return ScenarioExecutorResolutionSupport.resolveFromProvider(instance);
     }
 
     private List<InjectedField> injectAnnotatedFields(Object instance, ScenarioExecutor executor) throws IllegalAccessException {
@@ -121,19 +115,7 @@ public final class FlowTestV2Listener implements IInvokedMethodListener {
     }
 
     private Object getEnclosingInstance(Object instance) {
-        Class<?> type = instance.getClass();
-        if (type.getEnclosingClass() == null) {
-            return null;
-        }
-        try {
-            Field field = type.getDeclaredField("this$0");
-            field.setAccessible(true);
-            return field.get(instance);
-        } catch (NoSuchFieldException ex) {
-            return null;
-        } catch (IllegalAccessException ex) {
-            throw new IllegalStateException("Failed to access enclosing instance", ex);
-        }
+        return ScenarioExecutorResolutionSupport.getEnclosingInstance(instance);
     }
 
     private static final class TestState {

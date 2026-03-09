@@ -34,10 +34,15 @@
 - The user manual now also documents scenario classification (`act-only`, mixed, sharded, dynamic-table, multi-datasource) and recommended Traits organization patterns.
 - The primary user-facing example and manual now recommend `.verify(ctx -> { ... })` for mixed scenarios instead of stacking `fixture(...)`, `modified(...)`, `inserted(...)`, and external result assertions.
 - The primary user-facing example and manual now recommend `.watch(...) + .verify(ctx -> { ... }) + .run()` instead of `observe(...) + fragmented then(...) + .execute(executor)`.
+- Spring Boot integration examples and docs now recommend automatic executor resolution from the test framework integration instead of implementing `ScenarioExecutorProvider`.
+- Fixture-backed dynamic-table observation now auto-derives complete identity route predicates, including composite-key cases, for safer diff/cleanup targeting.
 
 ## Validation
 - Main `v2` command: `mvn -f flowtest-v2/pom.xml test`
 - Latest known result: passing.
+- Targeted verification after provider-doc cleanup:
+  - `mvn -q -pl flowtest-v2-junit5 -am -Dtest=FlowTestV2SimpleSpringBootTest -Dsurefire.failIfNoSpecifiedTests=false test`
+  - `mvn -q -pl flowtest-v2-testng -am -Dtest=com.github.sailfishc.flowtest.v2.testng.springboot.FlowTestV2SpringBootTestNgExampleTest,com.github.sailfishc.flowtest.v2.testng.springboot.FlowTestV2MultiDataSourceSpringBootTestNgExampleTest -Dsurefire.failIfNoSpecifiedTests=false test`
 
 ## What Is Not Done Yet
 - `ROLLBACK` needs an external transaction-aware executor.

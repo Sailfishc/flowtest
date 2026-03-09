@@ -4,6 +4,7 @@ import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureValueResolver;
 import com.github.sailfishc.flowtest.v2.spec.ObservationMode;
 import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
+import com.github.sailfishc.flowtest.v2.spec.RouteScope;
 import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
 
 import java.util.ArrayList;
@@ -11,7 +12,7 @@ import java.util.List;
 
 /**
  * Shared logic for enriching fixture-backed observations with auto-derived
- * {@link TableRouteScope} from materialized fixture instances.
+ * {@link TableRouteScope} and {@link RouteScope} from materialized fixture instances.
  *
  * <p>Used by both {@link JdbcObservationExecutor} and
  * {@link MultiDataSourceJdbcObservationExecutor}.</p>
@@ -22,8 +23,11 @@ final class ObservationEnricher {
     }
 
     /**
-     * Enriches fixture-backed dynamic-table observations by deriving {@link TableRouteScope}
-     * from the materialized fixture entity's dynamic table property.
+     * Enriches fixture-backed observations by deriving:
+     * <ul>
+     *   <li>{@link TableRouteScope} from dynamic table property (for physical table name resolution)</li>
+     *   <li>{@link RouteScope} from the entity identity columns (for WHERE conditions)</li>
+     * </ul>
      *
      * @param observations the original observation list
      * @param fixtures the fixture value resolver
@@ -51,26 +55,45 @@ final class ObservationEnricher {
         if (observation.getObservationMode() != ObservationMode.FIXTURE_BACKED) {
             return observation;
         }
-        if (!observation.getTableRouteScope().isEmpty()) {
-            return observation;
-        }
         FixtureHandle<?> handle = observation.getFixtureHandle();
         if (handle == null) {
             return observation;
         }
         Class<?> entityType = handle.getType();
         JdbcEntityRegistration registration = registry.getEntityRegistrations().get(entityType);
-        if (registration == null || !registration.isDynamicTable()) {
+        if (registration == null) {
             return observation;
         }
         Object fixtureValue = fixtures.resolve(handle);
         if (fixtureValue == null) {
             return observation;
         }
-        TableRouteScope derived = registration.deriveTableRouteScope(fixtureValue);
-        if (derived == null) {
-            return observation;
+
+        // Derive TableRouteScope for dynamic table name resolution
+        TableRouteScope derivedTableRoute = observation.getTableRouteScope();
+        boolean tableRouteDerived = false;
+        if (derivedTableRoute.isEmpty() && registration.isDynamicTable()) {
+            TableRouteScope derived = registration.deriveTableRouteScope(fixtureValue);
+            if (derived != null) {
+                derivedTableRoute = derived;
+                tableRouteDerived = true;
+            }
         }
-        return observation.withTableRouteScope(derived);
+
+        // Derive RouteScope from the entity identity for exact-match WHERE conditions
+        RouteScope derivedRouteScope = observation.getRouteScope();
+        boolean routeScopeDerived = false;
+        if (derivedRouteScope.isEmpty()) {
+            RouteScope identityRouteScope = registration.deriveIdentityRouteScope(fixtureValue);
+            if (identityRouteScope != null) {
+                derivedRouteScope = identityRouteScope;
+                routeScopeDerived = true;
+            }
+        }
+
+        if (tableRouteDerived || routeScopeDerived) {
+            return observation.withTableRouteScopeAndRouteScope(derivedTableRoute, derivedRouteScope);
+        }
+        return observation;
     }
 }
