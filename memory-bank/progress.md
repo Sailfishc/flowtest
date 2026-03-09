@@ -38,6 +38,8 @@
 - Fixture-backed dynamic-table observation now auto-derives complete identity route predicates, including composite-key cases, for safer diff/cleanup targeting.
 - Watch-only entity observations now auto-register entity metadata on first use, so `watch(w -> w.entity(Foo.class))` works without upfront `registerEntity(Foo.class)`.
 - Copyable Spring Boot/JUnit5/TestNG examples now align with that rule and keep `JdbcObservationRegistry` focused on watch-only tables plus explicit overrides.
+- `flowtest-v2-testng` now also includes a dedicated reference example for `given(single-table fixture) + act-only insert into sharded dynamic table` using Spring Boot, TestNG, MyBatis-Plus, and multi-datasource routing.
+- The root `README.md` now introduces the project from a V2 perspective and directs new users toward the observation-first DSL plus the dedicated user manual/integration guide.
 
 ## Validation
 - Main `v2` command: `mvn -f flowtest-v2/pom.xml test`

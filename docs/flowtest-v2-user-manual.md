@@ -852,6 +852,8 @@ private String bucket;
   - [FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
 - Spring Boot + TestNG + MyBatis-Plus + 动态表 + 多数据源：
   - [FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
+- Spring Boot + TestNG + 单表 fixture + 分库分表动态表参考：
+  - [FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest.java)
 
 ## 15. 下一步阅读
 

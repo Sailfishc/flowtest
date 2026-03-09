@@ -45,6 +45,8 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Tightened fixture-backed observation enrichment so dynamic-table fixtures derive both physical-table route and complete identity route predicates, including composite-key handling and regression coverage.
 - Updated JDBC observation resolution so typed watch-only resources (`watch(w -> w.entity(Foo.class))`) auto-register entity metadata on first use rather than requiring upfront `registerEntity(Foo.class)`.
 - Updated Spring Boot, JUnit 5, TestNG, and integration-guide examples to remove redundant `registerEntity(...)` calls where the entity is only used via fixture-backed or typed observation paths.
+- Added a new Spring Boot + TestNG reference example for the common mixed scenario: single-table fixture data in `given(...)`, empty sharded dynamic table before `act`, and act-only insert into the resolved physical shard table.
+- Rewrote the root `README.md` as a V2-first onboarding document, centered on `watch(...) + verify(ctx -> { ... }) + run()`, with V1 explicitly positioned as legacy.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.

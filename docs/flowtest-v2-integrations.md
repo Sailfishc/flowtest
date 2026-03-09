@@ -291,6 +291,23 @@ That example shows:
 - FlowTest resolving the physical table before datasource lookup
 - one TestNG scenario asserting cross-datasource update + insert cleanup
 
+### Complete Spring Boot + TestNG Single-Table Fixture + Sharded Dynamic Table Reference Example
+
+Use `flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest.java`
+when you need a copyable reference for:
+- one single-table fixture prepared in `given(...)`
+- one sharded dynamic table that starts empty and only receives data during `act`
+- Spring Boot + TestNG + MyBatis-Plus + multi-datasource routing
+- the latest `.watch(...) + .verify(...) + .run()` path
+
+That example shows:
+- `ft_user_profile` fixture data routed to `accountDs`
+- logical table `ft_trade_order` resolving to `ft_trade_order_a` / `ft_trade_order_b`
+- datasource pattern binding for `ft_trade_order_*`
+- `dynamicTableBy("bucket", "a")` and `.route("tenant_id", 100L)` used together
+- `watch(w -> w.fixture(user).table(...))` mixing fixture-backed and watch-only resources
+- default cleanup removing both the fixture row and the inserted dynamic-table row
+
 ### Complete Spring Boot + TestNG Multi-DataSource Example
 
 Use `flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java`
