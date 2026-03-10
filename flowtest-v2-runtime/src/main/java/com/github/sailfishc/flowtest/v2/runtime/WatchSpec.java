@@ -9,6 +9,8 @@ public interface WatchSpec {
 
     WatchSpec fixture(FixtureHandle<?> handle);
 
+    WatchSpec fixture(String alias);
+
     WatchResourceSpec table(String tableName);
 
     WatchResourceSpec entity(Class<?> entityType);

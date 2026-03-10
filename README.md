@@ -135,7 +135,6 @@ import com.github.sailfishc.flowtest.v2.junit5.FlowTestV2Test;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
 import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
-import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -155,22 +154,20 @@ class OrderFlowTest {
 
     @Test
     void shouldCreateOrder() throws Exception {
-        FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
-
         ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
-            .given(g -> g.persist(user,
+            .given(g -> g.persist("user", TestUser.class,
                 FixtureTrait.of(v -> v.setId(1L)),
                 FixtureTrait.of(v -> v.setTenantId(100L)),
                 FixtureTrait.of(v -> v.setBalance(100L))))
             .watch(w -> w
-                .fixture(user)
+                .fixture("user")
                 .table("ft_order").route("tenant_id", 100L))
             .when(() -> orderService.createOrder(100L, 1L, 20L))
             .verify(ctx -> {
                 ctx.success();
                 assertThat(ctx.result()).isEqualTo(10L);
-                assertThat(ctx.fixture(user).before().getBalance()).isEqualTo(100L);
-                assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(80L);
+                assertThat(ctx.fixture("user", TestUser.class).before().getBalance()).isEqualTo(100L);
+                assertThat(ctx.fixture("user", TestUser.class).after().getBalance()).isEqualTo(80L);
                 assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
                 assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
             })
@@ -223,7 +220,7 @@ FlowTestV2.scenario("act-only")
 ### watch fixture / table / entity
 
 ```java
-.watch(w -> w.fixture(user))
+.watch(w -> w.fixture("user"))
 .watch(w -> w.table("ft_order"))
 .watch(w -> w.entity(OrderEntity.class))
 ```
@@ -286,6 +283,41 @@ FlowTestV2.scenario("...")
     .verify(ctx -> { ... })
     .run();
 ```
+
+### 同一张表多条前置数据
+
+高频单条场景继续用 `persist(...)`。只有当同一个 entity 需要多条 fixture，而且大部分字段相同、少数字段不同的时候，再进入 `persistRows(...)`：
+
+```java
+FlowTestV2.scenario("batch-users")
+    .given(g -> g
+        .persistRows(TestUser.class, rows -> rows
+            .defaults(
+                FixtureTrait.of(v -> v.setTenantId(100L)),
+                FixtureTrait.of(v -> v.setBalance(100L)))
+            .row("alice",
+                FixtureTrait.of(v -> v.setId(1L)),
+                FixtureTrait.of(v -> v.setName("Alice")))
+            .row("bob",
+                FixtureTrait.of(v -> v.setId(2L)),
+                FixtureTrait.of(v -> v.setName("Bob")))
+            .row("charlie",
+                FixtureTrait.of(v -> v.setId(3L)),
+                FixtureTrait.of(v -> v.setName("Charlie")),
+                FixtureTrait.of(v -> v.setBalance(200L)))))
+    .watch(w -> w.entity(TestUser.class))
+    .verify(ctx -> {
+        assertThat(ctx.fixture("alice", TestUser.class).before().getName()).isEqualTo("Alice");
+        assertThat(ctx.fixture("charlie", TestUser.class).before().getBalance()).isEqualTo(200L);
+    })
+    .run();
+```
+
+语义上：
+
+- `defaults(...)` 先应用
+- 每个 `row(...)` 再叠加自己的差异 trait
+- 如果同一属性重复设置，以 `row(...)` 内最后生效的值为准
 
 不要再把新文档和新示例建立在旧的 `.observe(...) + .then(...) + .execute(executor)` 上。旧 API 仍可用，但它已经不是推荐入口。
 

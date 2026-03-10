@@ -290,23 +290,21 @@ JdbcObservationRegistry jdbcObservationRegistry() {
 - `verify` 在一个上下文里同时断言返回值、fixture 状态、表变化
 
 ```java
-FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
-
 ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
-    .given(g -> g.persist(user,
+    .given(g -> g.persist("user", TestUser.class,
         FixtureTrait.of(v -> v.setId(1L)),
         FixtureTrait.of(v -> v.setTenantId(100L)),
         FixtureTrait.of(v -> v.setName("Alice")),
         FixtureTrait.of(v -> v.setBalance(100L))))
     .watch(w -> w
-        .fixture(user)
+        .fixture("user")
         .table("ft_order").route("tenant_id", 100L))
     .when(() -> orderService.createOrder(100L, 1L, 10L))
     .verify(ctx -> {
         ctx.success();
         assertThat(ctx.result()).isEqualTo(10L);
-        assertThat(ctx.fixture(user).before().getBalance()).isEqualTo(100L);
-        assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(80L);
+        assertThat(ctx.fixture("user", TestUser.class).before().getBalance()).isEqualTo(100L);
+        assertThat(ctx.fixture("user", TestUser.class).after().getBalance()).isEqualTo(80L);
         assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
         assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
         assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
@@ -321,8 +319,59 @@ ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
 如果你更偏好旧的低层 DSL，`.observe(...)` 和 `.then(...)` 仍然可用；新版本推荐优先使用 `.watch(...) + .verify(ctx -> { ... })`，因为它能在一个地方同时拿到：
 
 - `ctx.result()`：`act` 返回值
-- `ctx.fixture(handle).before()/after()`：fixture 执行前后状态
+- `ctx.fixture("alias", Type.class).before()/after()`：fixture 执行前后状态
 - `ctx.table("...")` / `ctx.entity(...)`：diff 后的资源变化
+
+### 5.1.1 推荐的 fixture 引用方式
+
+新 DSL 推荐用 alias，而不是让测试代码显式持有 `FixtureHandle`：
+
+```java
+.given(g -> g.persist("user", TestUser.class, ...))
+.watch(w -> w.fixture("user"))
+.verify(ctx -> {
+    assertThat(ctx.fixture("user", TestUser.class).after().getBalance()).isEqualTo(80L);
+})
+```
+
+如果你需要兼容旧代码，`FixtureHandle` 版本仍然可用；但新测试和新文档建议统一使用 alias。
+
+### 5.1.2 同一个 entity 的多条前置数据
+
+当一张表需要多条 fixture，而且大部分字段相同、少数字段不同的时候，推荐使用 `persistRows(...)`：
+
+```java
+FlowTestV2.scenario("batch-users")
+    .given(g -> g
+        .persistRows(TestUser.class, rows -> rows
+            .defaults(
+                FixtureTrait.of(v -> v.setTenantId(100L)),
+                FixtureTrait.of(v -> v.setStatus("ACTIVE")),
+                FixtureTrait.of(v -> v.setBalance(100L)))
+            .row("alice",
+                FixtureTrait.of(v -> v.setId(1L)),
+                FixtureTrait.of(v -> v.setName("Alice")))
+            .row("bob",
+                FixtureTrait.of(v -> v.setId(2L)),
+                FixtureTrait.of(v -> v.setName("Bob")))
+            .row("charlie",
+                FixtureTrait.of(v -> v.setId(3L)),
+                FixtureTrait.of(v -> v.setName("Charlie")),
+                FixtureTrait.of(v -> v.setBalance(200L)))))
+    .watch(w -> w.entity(TestUser.class))
+    .verify(ctx -> {
+        assertThat(ctx.fixture("alice", TestUser.class).before().getName()).isEqualTo("Alice");
+        assertThat(ctx.fixture("charlie", TestUser.class).before().getBalance()).isEqualTo(200L);
+    })
+    .run();
+```
+
+语义规则：
+
+- `defaults(...)` 先应用到整组 row
+- `row(...)` 再叠加差异 trait
+- 同一字段重复设置时，以 `row(...)` 中最后生效的值为准
+- 具名 `row("alias", ...)` 可以在 `watch/verify/TraitContext` 里继续引用
 
 ### 5.1 数据库断言怎么写
 
@@ -907,22 +956,22 @@ FixtureTrait<TestUser> vip = FixtureTrait.compose(
 
 ### 11.6 fixture 之间有依赖时，用 `TraitContext`
 
-如果一个 fixture 依赖另一个 fixture，可以通过 `TraitContext` 解析 handle。
+如果一个 fixture 依赖另一个 fixture，推荐通过 `TraitContext` 解析 alias。
 
 例如订单依赖用户：
 
 ```java
 public final class BelongsToUserTrait implements FixtureTrait<TestOrder> {
 
-    private final FixtureHandle<TestUser> userHandle;
+    private final String userAlias;
 
-    public BelongsToUserTrait(FixtureHandle<TestUser> userHandle) {
-        this.userHandle = userHandle;
+    public BelongsToUserTrait(String userAlias) {
+        this.userAlias = userAlias;
     }
 
     @Override
     public void apply(TestOrder target, TraitContext context) {
-        TestUser user = context.resolve(userHandle);
+        TestUser user = context.fixture(userAlias, TestUser.class);
         target.setUserId(user.getId());
         target.setTenantId(user.getTenantId());
     }
@@ -930,6 +979,8 @@ public final class BelongsToUserTrait implements FixtureTrait<TestOrder> {
 ```
 
 这样 trait 就不只是“填字段”，而是可以表达 fixture 关系。
+
+如果你已经有旧的 `FixtureHandle` 风格 trait，`context.resolve(handle)` 仍然保留用于兼容。
 
 ### 11.7 最佳实践
 

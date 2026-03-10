@@ -81,15 +81,75 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         }
 
         @Override
+        public <T> GivenSpec persist(String alias, Class<T> entityType, FixtureTrait<? super T>... traits) {
+            return persist(FixtureHandle.named(entityType, alias), traits);
+        }
+
+        @Override
         public <T> GivenSpec persist(FixtureHandle<T> handle, FixtureTrait<? super T>... traits) {
+            fixtures.add(new FixtureSpec<T>(handle, handle.getType(), asList(traits)));
+            return this;
+        }
+
+        @Override
+        public <T> GivenSpec persistRows(Class<T> entityType, Consumer<RowSetSpec<T>> rows) {
+            DefaultRowSetSpec<T> rowSet = new DefaultRowSetSpec<T>(fixtures, entityType);
+            rows.accept(rowSet);
+            return this;
+        }
+
+        private <T> List<FixtureTrait<? super T>> asList(FixtureTrait<? super T>... traits) {
             List<FixtureTrait<? super T>> declaredTraits = new ArrayList<FixtureTrait<? super T>>();
             if (traits != null) {
                 for (FixtureTrait<? super T> trait : traits) {
                     declaredTraits.add(trait);
                 }
             }
-            fixtures.add(new FixtureSpec<T>(handle, handle.getType(), declaredTraits));
+            return declaredTraits;
+        }
+    }
+
+    private static final class DefaultRowSetSpec<T> implements RowSetSpec<T> {
+
+        private final List<FixtureSpec<?>> fixtures;
+        private final Class<T> entityType;
+        private final List<FixtureTrait<? super T>> defaultTraits = new ArrayList<FixtureTrait<? super T>>();
+
+        private DefaultRowSetSpec(List<FixtureSpec<?>> fixtures, Class<T> entityType) {
+            this.fixtures = fixtures;
+            this.entityType = entityType;
+        }
+
+        @Override
+        public RowSetSpec<T> defaults(FixtureTrait<? super T>... traits) {
+            append(defaultTraits, traits);
             return this;
+        }
+
+        @Override
+        public RowSetSpec<T> row(FixtureTrait<? super T>... traits) {
+            return row(FixtureHandle.anonymous(entityType), traits);
+        }
+
+        @Override
+        public RowSetSpec<T> row(String alias, FixtureTrait<? super T>... traits) {
+            return row(FixtureHandle.named(entityType, alias), traits);
+        }
+
+        private RowSetSpec<T> row(FixtureHandle<T> handle, FixtureTrait<? super T>... traits) {
+            List<FixtureTrait<? super T>> declaredTraits = new ArrayList<FixtureTrait<? super T>>(defaultTraits);
+            append(declaredTraits, traits);
+            fixtures.add(new FixtureSpec<T>(handle, entityType, declaredTraits));
+            return this;
+        }
+
+        private void append(List<FixtureTrait<? super T>> target, FixtureTrait<? super T>... traits) {
+            if (traits == null) {
+                return;
+            }
+            for (FixtureTrait<? super T> trait : traits) {
+                target.add(trait);
+            }
         }
     }
 
@@ -104,6 +164,12 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         @Override
         public WatchSpec fixture(FixtureHandle<?> handle) {
             observations.add(ObservationSpec.fixture(handle));
+            return this;
+        }
+
+        @Override
+        public WatchSpec fixture(String alias) {
+            observations.add(ObservationSpec.fixture(alias));
             return this;
         }
 
@@ -135,6 +201,11 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         @Override
         public WatchSpec fixture(FixtureHandle<?> handle) {
             return new DefaultWatchSpec(observations).fixture(handle);
+        }
+
+        @Override
+        public WatchSpec fixture(String alias) {
+            return new DefaultWatchSpec(observations).fixture(alias);
         }
 
         @Override

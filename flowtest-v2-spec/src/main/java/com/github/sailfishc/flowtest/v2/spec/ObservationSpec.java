@@ -15,6 +15,7 @@ public final class ObservationSpec {
     private final RouteScope routeScope;
     private final boolean routeRequired;
     private final FixtureHandle<?> fixtureHandle;
+    private final String fixtureAlias;
 
     private ObservationSpec(ResourceKind resourceKind,
                             ObservationMode observationMode,
@@ -23,7 +24,8 @@ public final class ObservationSpec {
                             TableRouteScope tableRouteScope,
                             RouteScope routeScope,
                             boolean routeRequired,
-                            FixtureHandle<?> fixtureHandle) {
+                            FixtureHandle<?> fixtureHandle,
+                            String fixtureAlias) {
         this.resourceKind = Objects.requireNonNull(resourceKind, "resourceKind must not be null");
         this.observationMode = Objects.requireNonNull(observationMode, "observationMode must not be null");
         this.resourceName = requireText(resourceName, "resourceName must not be blank");
@@ -32,6 +34,7 @@ public final class ObservationSpec {
         this.routeScope = routeScope == null ? RouteScope.empty() : routeScope;
         this.routeRequired = routeRequired;
         this.fixtureHandle = fixtureHandle;
+        this.fixtureAlias = fixtureAlias;
     }
 
     public static ObservationSpec fixture(FixtureHandle<?> handle) {
@@ -43,7 +46,22 @@ public final class ObservationSpec {
             TableRouteScope.empty(),
             RouteScope.empty(),
             false,
-            handle
+            handle,
+            null
+        );
+    }
+
+    public static ObservationSpec fixture(String alias) {
+        return new ObservationSpec(
+            ResourceKind.ENTITY,
+            ObservationMode.FIXTURE_BACKED,
+            alias,
+            null,
+            TableRouteScope.empty(),
+            RouteScope.empty(),
+            false,
+            null,
+            requireText(alias, "fixture alias must not be blank")
         );
     }
 
@@ -63,6 +81,7 @@ public final class ObservationSpec {
             tableRouteScope,
             routeScope,
             routeRequired,
+            null,
             null
         );
     }
@@ -83,6 +102,7 @@ public final class ObservationSpec {
             tableRouteScope,
             routeScope,
             routeRequired,
+            null,
             null
         );
     }
@@ -119,6 +139,10 @@ public final class ObservationSpec {
         return fixtureHandle;
     }
 
+    public String getFixtureAlias() {
+        return fixtureAlias;
+    }
+
     /**
      * Returns a copy of this observation with the given table route scope.
      * Used for runtime enrichment when fixture-backed dynamic table routes are derived.
@@ -132,7 +156,8 @@ public final class ObservationSpec {
             scope,
             this.routeScope,
             this.routeRequired,
-            this.fixtureHandle
+            this.fixtureHandle,
+            this.fixtureAlias
         );
     }
 
@@ -149,7 +174,8 @@ public final class ObservationSpec {
             this.tableRouteScope,
             scope,
             this.routeRequired,
-            this.fixtureHandle
+            this.fixtureHandle,
+            this.fixtureAlias
         );
     }
 
@@ -166,7 +192,8 @@ public final class ObservationSpec {
             tableRouteScope,
             routeScope,
             this.routeRequired,
-            this.fixtureHandle
+            this.fixtureHandle,
+            this.fixtureAlias
         );
     }
 

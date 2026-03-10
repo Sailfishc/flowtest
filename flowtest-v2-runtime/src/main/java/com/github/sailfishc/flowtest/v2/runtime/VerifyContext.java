@@ -20,6 +20,8 @@ public interface VerifyContext<R> {
 
     <T> FixtureVerifyContext<T> fixture(FixtureHandle<T> handle);
 
+    <T> FixtureVerifyContext<T> fixture(String alias, Class<T> type);
+
     ResourceVerifyContext resource(String resourceName);
 
     ResourceVerifyContext table(String tableName);

@@ -10,5 +10,9 @@ public interface GivenSpec {
 
     <T> FixtureHandle<T> persist(Class<T> entityType, FixtureTrait<? super T>... traits);
 
+    <T> GivenSpec persist(String alias, Class<T> entityType, FixtureTrait<? super T>... traits);
+
     <T> GivenSpec persist(FixtureHandle<T> handle, FixtureTrait<? super T>... traits);
+
+    <T> GivenSpec persistRows(Class<T> entityType, java.util.function.Consumer<RowSetSpec<T>> rows);
 }

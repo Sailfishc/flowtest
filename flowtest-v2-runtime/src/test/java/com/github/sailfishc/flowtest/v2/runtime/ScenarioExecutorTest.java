@@ -168,6 +168,31 @@ class ScenarioExecutorTest {
     }
 
     @Test
+    void shouldVerifyFixtureByAliasThroughContext() throws Exception {
+        final FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
+        RecordingFixtureExecutor fixtureExecutor = new RecordingFixtureExecutor(user, new TestUser(1L, "before"), new TestUser(1L, "after"));
+        RecordingObservationExecutor observationExecutor = new RecordingObservationExecutor(Arrays.asList(
+            snapshot(TestUser.class.getName()),
+            snapshot(TestUser.class.getName())
+        ));
+        ScenarioExecutor executor = new ScenarioExecutor(fixtureExecutor, observationExecutor);
+
+        ScenarioExecutionResult<String> result = FlowTestV2.scenario("verify-alias")
+            .given(g -> g.persist("user", TestUser.class, nameTrait("before")))
+            .watch(w -> w.fixture("user"))
+            .when(() -> "ok")
+            .verify(ctx -> {
+                ctx.success();
+                assertThat(ctx.fixture("user", TestUser.class).before().getName()).isEqualTo("before");
+                assertThat(ctx.fixture("user", TestUser.class).after().getName()).isEqualTo("after");
+            })
+            .execute(executor);
+
+        assertThat(result.getResult()).isEqualTo("ok");
+        assertThat(fixtureExecutor.isReloaded()).isTrue();
+    }
+
+    @Test
     void shouldVerifyFixtureAfterStateFromBeforePlusPatch() throws Exception {
         final FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
         RecordingFixtureExecutor fixtureExecutor = new RecordingFixtureExecutor(

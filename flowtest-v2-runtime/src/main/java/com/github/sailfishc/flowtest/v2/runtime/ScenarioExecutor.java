@@ -11,6 +11,7 @@ import com.github.sailfishc.flowtest.v2.fixture.FixtureExecutor;
 import com.github.sailfishc.flowtest.v2.fixture.NoOpFixtureExecutor;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
+import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
 import com.github.sailfishc.flowtest.v2.spec.FixtureValueResolver;
 import com.github.sailfishc.flowtest.v2.spec.ObservationDiff;
 import com.github.sailfishc.flowtest.v2.spec.ObservationExecutor;
@@ -20,6 +21,8 @@ import com.github.sailfishc.flowtest.v2.spec.ObservationSpec;
 import com.github.sailfishc.flowtest.v2.spec.ResourceChange;
 
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.Map;
 
 /**
  * Executes compiled scenarios against pluggable fixture and observation backends.
@@ -68,7 +71,13 @@ public final class ScenarioExecutor {
             }
             afterSnapshot = observationExecutor.capture(effectiveObservations);
             diff = ObservationDiff.between(beforeSnapshot, afterSnapshot);
-            verifyExpectations(definition.getExpectations(), definition.getVerifications(), fixtureExecution, result, failure, diff);
+            verifyExpectations(definition.getExpectations(),
+                definition.getVerifications(),
+                definition.getFixtures(),
+                fixtureExecution,
+                result,
+                failure,
+                diff);
             if (failure != null
                 && definition.getExpectations().getResultAssertions().isEmpty()
                 && definition.getVerifications().isEmpty()) {
@@ -115,6 +124,7 @@ public final class ScenarioExecutor {
 
     private <R> void verifyExpectations(ExpectationSet<R> expectations,
                                         List<ScenarioVerification<R>> verifications,
+                                        List<FixtureSpec<?>> fixtures,
                                         FixtureExecution fixtureExecution,
                                         R result,
                                         Exception failure,
@@ -122,7 +132,7 @@ public final class ScenarioExecutor {
         for (ResultAssertion<R> assertion : expectations.getResultAssertions()) {
             assertion.verify(result, failure);
         }
-        DefaultVerifyContext<R> verifyContext = verifyScenario(verifications, fixtureExecution, result, failure, diff);
+        DefaultVerifyContext<R> verifyContext = verifyScenario(verifications, fixtures, fixtureExecution, result, failure, diff);
         verifyChanges(expectations.getChangeExpectations(), diff);
         verifyChangeAssertions(expectations.getChangeAssertionExpectations(), diff);
         verifyFixtures(expectations.getFixtureExpectations(), fixtureExecution);
@@ -136,15 +146,30 @@ public final class ScenarioExecutor {
     }
 
     private <R> DefaultVerifyContext<R> verifyScenario(List<ScenarioVerification<R>> verifications,
+                                                       List<FixtureSpec<?>> fixtures,
                                                        FixtureExecution fixtureExecution,
                                                        R result,
                                                        Exception failure,
                                                        ObservationDiff diff) throws Exception {
-        DefaultVerifyContext<R> context = new DefaultVerifyContext<R>(result, failure, diff, fixtureExecution);
+        DefaultVerifyContext<R> context = new DefaultVerifyContext<R>(
+            result,
+            failure,
+            diff,
+            fixtureExecution,
+            fixtureHandlesByAlias(fixtures)
+        );
         for (ScenarioVerification<R> verification : verifications) {
             verification.verify(context);
         }
         return context;
+    }
+
+    private Map<String, FixtureHandle<?>> fixtureHandlesByAlias(List<FixtureSpec<?>> fixtures) {
+        Map<String, FixtureHandle<?>> aliases = new LinkedHashMap<String, FixtureHandle<?>>();
+        for (FixtureSpec<?> fixture : fixtures) {
+            aliases.put(fixture.getHandle().getName(), fixture.getHandle());
+        }
+        return aliases;
     }
 
     private void verifyChanges(List<ResourceChangeExpectation> expectations, ObservationDiff diff) {

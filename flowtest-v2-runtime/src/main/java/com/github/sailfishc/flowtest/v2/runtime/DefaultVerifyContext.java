@@ -26,13 +26,19 @@ final class DefaultVerifyContext<R> implements VerifyContext<R> {
     private final Exception failure;
     private final ObservationDiff diff;
     private final FixtureExecution fixtureExecution;
+    private final Map<String, FixtureHandle<?>> fixtureHandlesByAlias;
     private boolean outcomeVerified;
 
-    DefaultVerifyContext(R result, Exception failure, ObservationDiff diff, FixtureExecution fixtureExecution) {
+    DefaultVerifyContext(R result,
+                         Exception failure,
+                         ObservationDiff diff,
+                         FixtureExecution fixtureExecution,
+                         Map<String, FixtureHandle<?>> fixtureHandlesByAlias) {
         this.result = result;
         this.failure = failure;
         this.diff = diff;
         this.fixtureExecution = fixtureExecution;
+        this.fixtureHandlesByAlias = new LinkedHashMap<String, FixtureHandle<?>>(fixtureHandlesByAlias);
     }
 
     @Override
@@ -72,6 +78,22 @@ final class DefaultVerifyContext<R> implements VerifyContext<R> {
 
     @Override
     public <T> FixtureVerifyContext<T> fixture(final FixtureHandle<T> handle) {
+        return fixtureContext(handle);
+    }
+
+    @Override
+    public <T> FixtureVerifyContext<T> fixture(String alias, Class<T> type) {
+        FixtureHandle<?> handle = fixtureHandlesByAlias.get(alias);
+        if (handle == null) {
+            throw new AssertionError("No fixture alias named " + alias);
+        }
+        if (!type.equals(handle.getType())) {
+            throw new AssertionError("Fixture alias " + alias + " does not refer to " + type.getName());
+        }
+        return fixtureContext(castHandle(handle));
+    }
+
+    private <T> FixtureVerifyContext<T> fixtureContext(final FixtureHandle<T> handle) {
         return new FixtureVerifyContext<T>() {
             @Override
             public T before() {
@@ -88,6 +110,11 @@ final class DefaultVerifyContext<R> implements VerifyContext<R> {
                 assertMatchesAfter(handle, patch, before(), after(), fixtureExecution.describe(handle));
             }
         };
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T> FixtureHandle<T> castHandle(FixtureHandle<?> handle) {
+        return (FixtureHandle<T>) handle;
     }
 
     @Override

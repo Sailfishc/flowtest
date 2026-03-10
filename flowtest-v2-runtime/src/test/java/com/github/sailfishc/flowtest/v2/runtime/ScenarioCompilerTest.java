@@ -2,11 +2,14 @@ package com.github.sailfishc.flowtest.v2.runtime;
 
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.assertion.FixtureAssertion;
+import com.github.sailfishc.flowtest.v2.fixture.FixtureMaterializer;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
 import com.github.sailfishc.flowtest.v2.spec.RouteScope;
 import org.junit.jupiter.api.Test;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -136,6 +139,66 @@ class ScenarioCompilerTest {
     }
 
     @Test
+    void resolvesFixtureAliasObservationDuringCompile() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("alias-watch")
+            .watch(w -> w.fixture("buyer"))
+            .given(g -> g.persist("buyer", User.class, FixtureTrait.of(value -> value.tenantId = 1001L)))
+            .when(() -> "ok")
+            .compile();
+
+        assertThat(compiled.getDefinition().getFixtures()).hasSize(1);
+        assertThat(compiled.getDefinition().getObservations()).hasSize(1);
+        assertThat(compiled.getDefinition().getObservations().get(0).getFixtureAlias()).isNull();
+        assertThat(compiled.getDefinition().getObservations().get(0).getFixtureHandle().getName()).isEqualTo("buyer");
+    }
+
+    @Test
+    void supportsPersistRowsWithDefaultsAndRowOverrides() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("persist-rows")
+            .given(g -> g.persistRows(User.class, rows -> rows
+                .defaults(
+                    FixtureTrait.of(value -> value.tenantId = 1001L),
+                    FixtureTrait.of(value -> value.balance = 100L))
+                .row("alice",
+                    FixtureTrait.of(value -> value.id = 1L),
+                    FixtureTrait.of(value -> value.name = "Alice"))
+                .row("bob",
+                    FixtureTrait.of(value -> value.id = 2L),
+                    FixtureTrait.of(value -> value.name = "Bob"),
+                    FixtureTrait.of(value -> value.balance = 200L))))
+            .watch(w -> w.entity(User.class))
+            .when(() -> "ok")
+            .compile();
+
+        Map<FixtureHandle<?>, Object> values = new FixtureMaterializer().materialize(compiled.getDefinition().getFixtures());
+        User alice = (User) values.get(compiled.getDefinition().getFixtures().get(0).getHandle());
+        User bob = (User) values.get(compiled.getDefinition().getFixtures().get(1).getHandle());
+
+        assertThat(compiled.getDefinition().getFixtures()).hasSize(2);
+        assertThat(compiled.getDefinition().getFixtures().get(0).getHandle().getName()).isEqualTo("alice");
+        assertThat(compiled.getDefinition().getFixtures().get(1).getHandle().getName()).isEqualTo("bob");
+        assertThat(alice.tenantId).isEqualTo(1001L);
+        assertThat(alice.balance).isEqualTo(100L);
+        assertThat(alice.name).isEqualTo("Alice");
+        assertThat(bob.tenantId).isEqualTo(1001L);
+        assertThat(bob.balance).isEqualTo(200L);
+        assertThat(bob.name).isEqualTo("Bob");
+    }
+
+    @Test
+    void rejectsDuplicateFixtureAlias() {
+        assertThatThrownBy(() -> FlowTestV2.scenario("duplicate-alias")
+            .given(g -> g
+                .persist("user", User.class, FixtureTrait.of(value -> value.id = 1L))
+                .persist("user", Account.class, FixtureTrait.of(value -> value.id = 2L)))
+            .watch(w -> w.entity(User.class))
+            .when(() -> "ok")
+            .compile())
+            .isInstanceOf(ScenarioValidationException.class)
+            .hasMessageContaining("Duplicate fixture alias declared: user");
+    }
+
+    @Test
     void rejectsFixtureExpectationReferencingUndeclaredHandle() {
         final FixtureHandle<User> ghost = FixtureHandle.named(User.class, "ghost");
 
@@ -172,6 +235,13 @@ class ScenarioCompilerTest {
     }
 
     private static final class User {
+        private long id;
         private long tenantId;
+        private long balance;
+        private String name;
+    }
+
+    private static final class Account {
+        private long id;
     }
 }

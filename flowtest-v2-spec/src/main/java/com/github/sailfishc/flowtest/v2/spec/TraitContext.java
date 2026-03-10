@@ -10,7 +10,14 @@ public interface TraitContext {
         public <T> T resolve(FixtureHandle<T> handle) {
             throw new IllegalStateException("No fixtures are available in the empty trait context");
         }
+
+        @Override
+        public <T> T fixture(String alias, Class<T> type) {
+            throw new IllegalStateException("No fixtures are available in the empty trait context");
+        }
     };
 
     <T> T resolve(FixtureHandle<T> handle);
+
+    <T> T fixture(String alias, Class<T> type);
 }
