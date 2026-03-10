@@ -65,8 +65,8 @@
 | `act-only + 分库分表` | `.watch(w -> w.table("ft_order").route("tenant_id", 100L))` |
 | `act-only + 动态表` | `.watch(w -> w.table("ft_order").dynamicTableBy("bucket", "a"))` |
 | `act-only + 动态表 + 分库分表` | `.watch(w -> w.table("ft_order").dynamicTableBy("bucket", "a").route("tenant_id", 100L))` |
-| `混合场景 + 普通表` | `.given(...).watch(w -> w.fixture(user).table("ft_order"))` |
-| `混合场景 + 动态表 + 分库分表` | `.given(...).watch(w -> w.fixture(user).table("ft_order").dynamicTableBy("bucket", "a").route("tenant_id", 100L))` |
+| `混合场景 + 普通表` | `.given(...).watch(w -> w.fixture("user").table("ft_order"))` |
+| `混合场景 + 动态表 + 分库分表` | `.given(...).watch(w -> w.fixture("user").table("ft_order").dynamicTableBy("bucket", "a").route("tenant_id", 100L))` |
 
 ## 2. 模块选择
 
@@ -346,7 +346,6 @@ FlowTestV2.scenario("batch-users")
         .persistRows(TestUser.class, rows -> rows
             .defaults(
                 FixtureTrait.of(v -> v.setTenantId(100L)),
-                FixtureTrait.of(v -> v.setStatus("ACTIVE")),
                 FixtureTrait.of(v -> v.setBalance(100L)))
             .row("alice",
                 FixtureTrait.of(v -> v.setId(1L)),
@@ -458,7 +457,7 @@ FlowTestV2.scenario("batch-users")
 .verify(ctx -> {
     ctx.success();
     assertThat(ctx.result()).isEqualTo(10L);
-    assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(80L);
+    assertThat(ctx.fixture("user", TestUser.class).after().getBalance()).isEqualTo(80L);
     assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
     assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
 })
@@ -471,7 +470,7 @@ FlowTestV2.scenario("batch-users")
 ```java
 .verify(ctx -> {
     ctx.success();
-    ctx.fixture(user).matchesAfter(
+    ctx.fixture("user", TestUser.class).matchesAfter(
         FixtureStatePatch.of(TestUser.class)
             .set(TestUser::getBalance, 80L)
             .ignore(TestUser::getUpdatedAt, TestUser::getVersion));
@@ -783,7 +782,7 @@ private FixtureTrait<TestUser> balanceTrait(final Long balance) {
 组合时：
 
 ```java
-.given(g -> g.persist(user,
+.given(g -> g.persist("user", TestUser.class,
     idTrait(1L),
     tenantTrait(100L),
     balanceTrait(100L)))
@@ -801,7 +800,7 @@ private FixtureTrait<TestUser> balanceTrait(final Long balance) {
 ### 11.1 `fixture` 和 `trait` 的关系
 
 - `fixture`：这条前置数据本身
-- `FixtureHandle`：这条前置数据的引用
+- `alias`：这条前置数据在场景内的引用名
 - `trait`：把这条前置数据变成目标状态的规则
 
 可以这样理解：
@@ -812,9 +811,7 @@ private FixtureTrait<TestUser> balanceTrait(final Long balance) {
 例如：
 
 ```java
-FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
-
-.given(g -> g.persist(user,
+.given(g -> g.persist("user", TestUser.class,
     UserTraits.id(1L),
     UserTraits.inTenant(100L),
     UserTraits.balance(100L)))
@@ -822,8 +819,10 @@ FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
 
 这里：
 
-- `user` 是 fixture
+- `"user"` 是这条 fixture 的 alias
 - `UserTraits.id(...)`、`UserTraits.inTenant(...)` 是 trait
+
+如果你在兼容旧代码，也仍然可以继续使用 `FixtureHandle`。
 
 ### 11.2 不是只能写 `FixtureTrait.of(...)`
 
