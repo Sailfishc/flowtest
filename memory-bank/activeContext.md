@@ -51,6 +51,9 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Rewrote the root `README.md` as a V2-first onboarding document, centered on `watch(...) + verify(ctx -> { ... }) + run()`, with V1 explicitly positioned as legacy.
 - Added fixture whole-state verification through `ctx.fixture(handle).matchesAfter(FixtureStatePatch.of(...).set(...).ignore(...))`, backed by fixture metadata so unmanaged/ignored properties can stay out of comparison.
 - Added type-safe getter-reference support for `FixtureStatePatch`, so the recommended form is now `.set(Foo::getBar, ...)` / `.ignore(Foo::getBaz)` rather than string property names.
+- Added alias-first fixture DSL: `persist("user", User.class, ...)`, `watch(w -> w.fixture("user"))`, `ctx.fixture("user", User.class)`, and `TraitContext.fixture("user", User.class)` now cover the recommended fixture reference path without exposing `FixtureHandle`.
+- Added `persistRows(Class<T>, rows -> rows.defaults(...).row("a", ...).row("b", ...))` for same-entity multi-row fixture setup with shared defaults plus per-row overrides.
+- Added compile-time fixture-alias resolution for `watch(w -> w.fixture("alias"))`, so alias-based watch declarations can be compiled against the final fixture set.
 
 ## Active Decisions
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
@@ -70,8 +73,10 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - For fixture-backed mutation scenarios where the intent is “only these fields changed”, whole-state verification should now prefer `matchesAfter(...)` over manually asserting each unchanged field.
 - Within `matchesAfter(...)`, getter method references are now the preferred property selector because they are refactor-safe and make patch definitions less brittle.
 - The current recommended user-facing declaration path is `.watch(...) + .verify(ctx -> { ... }) + .run()` under test-framework integration; the older `.observe(...) + .then(...)` and explicit `.execute(executor)` path remains as a lower-level compatibility layer.
+- The current recommended fixture declaration path is alias-first: use `persist("alias", ...)`, `persistRows(...)`, alias-based `watch(...)`, alias-based `VerifyContext`, and alias-based `TraitContext`; keep `FixtureHandle` only as a compatibility/lower-level API.
 - The registry should now be explained primarily as an override/configuration point for watch-only tables and non-standard mappings; typed entity observations should default to annotation/convention inference.
 - For Spring Boot integration, the recommended path is now zero-provider: `@FlowTestV2Test` for JUnit 5 or `@Listeners(FlowTestV2Listener.class)` for TestNG, then `.run()`; `ScenarioExecutorProvider` is compatibility-only.
+- Fixture aliases are now scenario-global identifiers; duplicate alias names across fixtures are rejected during compilation.
 
 ## Next Likely Steps
 - Consider transaction-aware `ROLLBACK` support for Spring-managed tests.

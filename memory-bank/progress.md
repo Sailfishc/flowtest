@@ -44,6 +44,8 @@
 - The root `README.md` now introduces the project from a V2 perspective and directs new users toward the observation-first DSL plus the dedicated user manual/integration guide.
 - `FixtureVerifyContext` now supports whole-state fixture assertions through `matchesAfter(FixtureStatePatch...)`, using before-state plus explicit overrides and optional ignores to catch unintended field changes with less test code.
 - `FixtureStatePatch` now also supports Java 8 getter method references for `.set(...)` and `.ignore(...)`, avoiding stringly-typed property names in the recommended API.
+- The DSL now supports alias-first fixture declarations and same-entity batch setup through `persist("alias", ...)`, `watch(w -> w.fixture("alias"))`, `ctx.fixture("alias", Type.class)`, `TraitContext.fixture("alias", Type.class)`, and `persistRows(...)` with `defaults(...)` + `row(...)`.
+- Scenario compilation now resolves alias-based fixture observations and rejects duplicate fixture aliases.
 
 ## Validation
 - Main `v2` command: `mvn -f flowtest-v2/pom.xml test`
@@ -51,6 +53,8 @@
 - Targeted verification after provider-doc cleanup:
   - `mvn -q -pl flowtest-v2-junit5 -am -Dtest=FlowTestV2SimpleSpringBootTest -Dsurefire.failIfNoSpecifiedTests=false test`
   - `mvn -q -pl flowtest-v2-testng -am -Dtest=com.github.sailfishc.flowtest.v2.testng.springboot.FlowTestV2SpringBootTestNgExampleTest,com.github.sailfishc.flowtest.v2.testng.springboot.FlowTestV2MultiDataSourceSpringBootTestNgExampleTest -Dsurefire.failIfNoSpecifiedTests=false test`
+  - `mvn -q -pl flowtest-v2-runtime,flowtest-v2-fixture -am test -Dtest=ScenarioCompilerTest,ScenarioExecutorTest,FixtureDraftTest -Dsurefire.failIfNoSpecifiedTests=false test`
+  - `mvn -q -pl flowtest-v2-cases -am test`
 
 ## What Is Not Done Yet
 - `ROLLBACK` needs an external transaction-aware executor.
