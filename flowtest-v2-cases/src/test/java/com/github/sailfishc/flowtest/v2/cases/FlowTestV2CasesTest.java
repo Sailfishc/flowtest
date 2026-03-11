@@ -59,15 +59,19 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<Long> result = FlowTestV2.scenario("act-only-order-create")
-            .watch(w -> w.table("ft_order").route("tenant_id", 100L)
-                .table("ft_order_item").route("tenant_id", 100L))
+            .observe(o -> o
+                .table("ft_order", r -> r.route("tenant_id", 100L))
+                .table("ft_order_item", r -> r.route("tenant_id", 100L)))
             .when(() -> {
                 executeSql("insert into ft_order(id, tenant_id, user_id, status) values (1, 100, 7, 'CREATED')");
                 executeSql("insert into ft_order_item(id, order_id, tenant_id, sku) values (11, 1, 100, 'SKU-1')");
                 executeSql("insert into ft_order_item(id, order_id, tenant_id, sku) values (12, 1, 100, 'SKU-2')");
                 return 1L;
             })
-            .then(t -> t.expectNoException().inserted("ft_order", 1).inserted("ft_order_item", 2))
+            .then(t -> t
+                .success()
+                .table("ft_order", order -> order.inserted(1))
+                .table("ft_order_item", item -> item.inserted(2)))
             .execute(executor);
 
         assertThat(result.getResult()).isEqualTo(1L);
@@ -88,21 +92,22 @@ class FlowTestV2CasesTest {
         );
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("mixed-user-order")
-            .given(g -> g.persist(user,
+            .given(g -> g.fixture(user,
                 idTrait(1L),
                 tenantTrait(100L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .watch(w -> w.fixture(user).table("ft_order").route("tenant_id", 100L))
+            .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
             .when(() -> {
                 executeSql("update ft_user set balance = 80 where id = 1");
                 executeSql("insert into ft_order(id, tenant_id, user_id, status) values (2, 100, 1, 'CREATED')");
                 return "ok";
             })
-            .then(t -> t.expectNoException()
-                .fixture(user, value -> assertThat(value.getBalance()).isEqualTo(80L))
-                .inserted("ft_order", 1)
-                .modified(TestUser.class.getName(), 1))
+            .then(t -> t
+                .success()
+                .fixture(user, u -> u.after(value -> assertThat(value.getBalance()).isEqualTo(80L)))
+                .table("ft_order", order -> order.inserted(1))
+                .entity(TestUser.class, e -> e.modified(1)))
             .execute(executor);
 
         assertThat(result.getResult()).isEqualTo("ok");
@@ -120,19 +125,20 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("row-level-order")
-            .watch(w -> w.table("ft_order").route("tenant_id", 100L))
+            .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
             .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
             .when(() -> {
                 executeSql("update ft_order set status = 'PAID' where id = 301");
                 executeSql("insert into ft_order(id, tenant_id, user_id, status) values (302, 100, 8, 'CREATED')");
                 return "changed";
             })
-            .then(t -> t.expectNoException()
-                .insertedRow("ft_order", RowAssertions.allOf(
-                    RowAssertions.columnEquals("id", 302L),
-                    RowAssertions.columnEquals("status", "CREATED")
-                ))
-                .modifiedRow("ft_order", ModifiedRowAssertions.changed("status", "CREATED", "PAID")))
+            .then(t -> t
+                .success()
+                .table("ft_order", order -> order
+                    .insertedRow(RowAssertions.allOf(
+                        RowAssertions.columnEquals("id", 302L),
+                        RowAssertions.columnEquals("status", "CREATED")))
+                    .modifiedRow(ModifiedRowAssertions.changed("status", "CREATED", "PAID"))))
             .execute(executor);
 
         assertThat(result.getResult()).isEqualTo("changed");
@@ -151,13 +157,15 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("restore-modified-order")
-            .watch(w -> w.table("ft_order").route("tenant_id", 100L))
+            .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
             .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
             .when(() -> {
                 executeSql("update ft_order set status = 'PAID' where id = 101");
                 return "updated";
             })
-            .then(t -> t.expectNoException().modified("ft_order", 1))
+            .then(t -> t
+                .success()
+                .table("ft_order", order -> order.modified(1)))
             .execute(executor);
 
         assertThat(result.getResult()).isEqualTo("updated");
@@ -176,13 +184,15 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("restore-deleted-order")
-            .watch(w -> w.table("ft_order").route("tenant_id", 100L))
+            .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
             .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
             .when(() -> {
                 executeSql("delete from ft_order where id = 201");
                 return "deleted";
             })
-            .then(t -> t.expectNoException().deleted("ft_order", 1))
+            .then(t -> t
+                .success()
+                .table("ft_order", order -> order.deleted(1)))
             .execute(executor);
 
         assertThat(result.getResult()).isEqualTo("deleted");
@@ -203,15 +213,17 @@ class FlowTestV2CasesTest {
         ));
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("dynamic-table-order")
-            .watch(w -> w.table("ft_order_dynamic")
+            .observe(o -> o.table("ft_order_dynamic", r -> r
                 .dynamicTableBy("bucket", "a")
-                .route("tenant_id", 100L))
+                .route("tenant_id", 100L)))
             .when(() -> {
                 executeSql("insert into ft_order_dynamic_a(id, tenant_id, status) values (401, 100, 'CREATED')");
                 executeSql("insert into ft_order_dynamic_b(id, tenant_id, status) values (402, 100, 'UNTOUCHED')");
                 return "ok";
             })
-            .then(t -> t.expectNoException().inserted("ft_order_dynamic", 1))
+            .then(t -> t
+                .success()
+                .table("ft_order_dynamic", order -> order.inserted(1)))
             .execute(executor);
 
         assertThat(result.getResult()).isEqualTo("ok");
@@ -220,39 +232,19 @@ class FlowTestV2CasesTest {
     }
 
     private FixtureTrait<TestUser> idTrait(final Long id) {
-        return new FixtureTrait<TestUser>() {
-            @Override
-            public void apply(TestUser target, com.github.sailfishc.flowtest.v2.spec.TraitContext context) {
-                target.setId(id);
-            }
-        };
+        return FixtureTrait.mutate(user -> user.setId(id));
     }
 
     private FixtureTrait<TestUser> tenantTrait(final Long tenantId) {
-        return new FixtureTrait<TestUser>() {
-            @Override
-            public void apply(TestUser target, com.github.sailfishc.flowtest.v2.spec.TraitContext context) {
-                target.setTenantId(tenantId);
-            }
-        };
+        return FixtureTrait.mutate(user -> user.setTenantId(tenantId));
     }
 
     private FixtureTrait<TestUser> nameTrait(final String name) {
-        return new FixtureTrait<TestUser>() {
-            @Override
-            public void apply(TestUser target, com.github.sailfishc.flowtest.v2.spec.TraitContext context) {
-                target.setName(name);
-            }
-        };
+        return FixtureTrait.mutate(user -> user.setName(name));
     }
 
     private FixtureTrait<TestUser> balanceTrait(final Long balance) {
-        return new FixtureTrait<TestUser>() {
-            @Override
-            public void apply(TestUser target, com.github.sailfishc.flowtest.v2.spec.TraitContext context) {
-                target.setBalance(balance);
-            }
-        };
+        return FixtureTrait.mutate(user -> user.setBalance(balance));
     }
 
     private void executeSql(String sql) throws Exception {

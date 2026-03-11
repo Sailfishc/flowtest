@@ -42,9 +42,9 @@ class JdbcFixtureExecutionMetadataTest {
 
         FixtureExecution execution = executor.prepare(Collections.<FixtureSpec<?>>singletonList(
             new FixtureSpec<MetadataUser>(user, MetadataUser.class, Arrays.<FixtureTrait<? super MetadataUser>>asList(
-                FixtureTrait.of(v -> v.setId(1L)),
-                FixtureTrait.of(v -> v.setName("Alice")),
-                FixtureTrait.of(v -> v.setNote("internal"))
+                FixtureTrait.mutate(v -> v.setId(1L)),
+                FixtureTrait.mutate(v -> v.setName("Alice")),
+                FixtureTrait.mutate(v -> v.setNote("internal"))
             ))
         ));
         try {

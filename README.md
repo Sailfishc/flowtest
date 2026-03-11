@@ -1,10 +1,10 @@
 # FlowTest
 
-FlowTest 是一个面向数据库集成测试的 Java 8 框架。当前仓库的主线是 **V2**：一个 **observation-first** 的测试 DSL，用 `given -> watch -> when -> verify` 描述场景，自动完成快照、diff 和 cleanup。
+FlowTest 是一个面向数据库集成测试的 Java 8 框架。当前仓库的主线是 **V2**：一个 **observation-first** 的测试 DSL，用 `given -> observe? -> when -> then -> run` 描述场景，自动完成快照、diff 和 cleanup。
 
 如果你是第一次接触这个项目，可以先记住一句话：
 
-> FlowTest V2 不是先“造很多数据再猜会变什么”，而是先声明“我要观察什么”，再执行业务动作，并对结果和数据变化做统一校验。
+> FlowTest V2 不是先"造很多数据再猜会变什么"，而是先声明"我要观察什么"，再执行业务动作，并对结果和数据变化做统一校验。
 
 V1 模块仍然保留在仓库中，但根目录 README 现在以 V2 为准。
 
@@ -20,21 +20,30 @@ FlowTest V2 适合写这类测试：
 它的核心模型只有 4 个概念：
 
 - `given`：准备前置数据，可选
-- `watch`：声明要观察的表、实体或 fixture，必填
+- `observe`：声明要观察的表、实体或 fixture，可选（大多数情况可从 `then(...)` 自动推导）
 - `when`：执行业务动作
-- `verify`：在一个上下文里统一断言返回值、异常、fixture 前后状态和数据库 diff
+- `then`：统一验证入口，使用 block-scoped 断言校验返回值、异常、fixture 前后状态和数据库 diff
 
 推荐 API 形态：
 
 ```java
 FlowTestV2.scenario("create-order")
-    .given(g -> g.persist(...))
-    .watch(w -> w.fixture(...).table("ft_order").route("tenant_id", 100L))
-    .when(() -> orderService.createOrder(...))
-    .verify(ctx -> {
-        ctx.success();
-        // assert result / fixture before-after / table diff
-    })
+    .given(g -> g.fixture("user", TestUser.class,
+        FixtureTrait.mutate(v -> v.setId(1L)),
+        FixtureTrait.mutate(v -> v.setTenantId(100L)),
+        FixtureTrait.mutate(v -> v.setBalance(100L))))
+    .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
+    .when(() -> orderService.createOrder(100L, 1L, 20L))
+    .then(t -> t
+        .success()
+        .returns(10L)
+        .fixture("user", TestUser.class, u -> u
+            .after(v -> assertThat(v.getBalance()).isEqualTo(80L)))
+        .table("ft_order", order -> order
+            .inserted(1)
+            .inspect(ctx -> {
+                assertThat(ctx.insertedOne().getColumn("status")).isEqualTo("CREATED");
+            })))
     .run();
 ```
 
@@ -61,7 +70,7 @@ FlowTestV2.scenario("create-order")
 - 数据只会在 `act` 之后出现
 - 你只想观察某张表是否新增/修改/删除了什么
 
-V2 的 `watch(...)` 就是为这种场景设计的。即使没有 `given(...)`，也可以先声明观察范围，再执行 `when(...)`。
+V2 的观察机制就是为这种场景设计的。即使没有 `given(...)`，也可以直接声明观察范围（自动或手动），再执行 `when(...)`。
 
 #### 2.3 分库分表、动态表、多数据源下很难稳定清理
 
@@ -134,7 +143,7 @@ import com.github.sailfishc.flowtest.v2.FlowTestV2;
 import com.github.sailfishc.flowtest.v2.junit5.FlowTestV2Test;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcEntity;
 import com.github.sailfishc.flowtest.v2.observe.rdbms.JdbcObservationRegistry;
-import com.github.sailfishc.flowtest.v2.runtime.ScenarioExecutionResult;
+import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -154,26 +163,26 @@ class OrderFlowTest {
 
     @Test
     void shouldCreateOrder() throws Exception {
-        ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
-            .given(g -> g.persist("user", TestUser.class,
-                FixtureTrait.of(v -> v.setId(1L)),
-                FixtureTrait.of(v -> v.setTenantId(100L)),
-                FixtureTrait.of(v -> v.setBalance(100L))))
-            .watch(w -> w
-                .fixture("user")
-                .table("ft_order").route("tenant_id", 100L))
-            .when(() -> orderService.createOrder(100L, 1L, 20L))
-            .verify(ctx -> {
-                ctx.success();
-                assertThat(ctx.result()).isEqualTo(10L);
-                assertThat(ctx.fixture("user", TestUser.class).before().getBalance()).isEqualTo(100L);
-                assertThat(ctx.fixture("user", TestUser.class).after().getBalance()).isEqualTo(80L);
-                assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
-                assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
-            })
-            .run();
+        FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
 
-        assertThat(result.getResult()).isEqualTo(10L);
+        FlowTestV2.scenario("create-order")
+            .given(g -> g.fixture(user,
+                FixtureTrait.mutate(v -> v.setId(1L)),
+                FixtureTrait.mutate(v -> v.setTenantId(100L)),
+                FixtureTrait.mutate(v -> v.setBalance(100L))))
+            .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
+            .when(() -> orderService.createOrder(100L, 1L, 20L))
+            .then(t -> t
+                .success()
+                .returns(10L)
+                .fixture(user, u -> u
+                    .after(v -> assertThat(v.getBalance()).isEqualTo(80L)))
+                .table("ft_order", order -> order
+                    .inserted(1)
+                    .inspect(ctx -> {
+                        assertThat(ctx.insertedOne().getColumn("status")).isEqualTo("CREATED");
+                    })))
+            .run();
     }
 
     @JdbcEntity(table = "ft_user", keyColumns = {"id"})
@@ -194,57 +203,75 @@ class OrderFlowTest {
 
 这个例子里：
 
-- `given(...)` 只准备用户 fixture
-- `watch(...)` 同时观察 fixture 和订单表
-- `.route("tenant_id", 100L)` 让快照、diff、cleanup 都带上分片条件
-- `verify(ctx -> { ... })` 在一个地方校验返回值和数据库变化
+- `given(...)` 用 `fixture(...)` 准备用户数据
+- `observe(...)` 声明对订单表的观察，带上路由条件（fixture 会从 `then(...)` 自动推导，不需要在 `observe` 里重复声明）
+- `then(...)` 使用 block-scoped 断言，每个资源在自己的 lambda 里做校验
 - `.run()` 使用测试框架提前绑定的 `ScenarioExecutor`
 
 ## 4. 核心能力
 
 ### act-only 场景
 
-不需要 fixture 时，直接观察表即可：
+不需要 fixture 时，直接观察表即可。如果需要路由条件，用 `observe(...)` 声明：
 
 ```java
 FlowTestV2.scenario("act-only")
-    .watch(w -> w.table("ft_order").route("tenant_id", 100L))
+    .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
     .when(() -> orderService.createOrder(100L, 1L, 20L))
-    .verify(ctx -> {
-        ctx.success();
-        assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
-    })
+    .then(t -> t
+        .success()
+        .table("ft_order", order -> order.inserted(1)))
     .run();
 ```
 
-### watch fixture / table / entity
+### 观察自动推导
+
+`then(...)` 中提到的资源（table、entity、fixture）会被自动推导为观察目标。只有以下情况需要显式 `observe(...)`：
+
+- 表需要路由条件（`.route(...)`）
+- 表使用动态表名（`.dynamicTableBy(...)`）
+- 只想观察某个资源但不在 `then(...)` 里做断言
 
 ```java
-.watch(w -> w.fixture("user"))
-.watch(w -> w.table("ft_order"))
-.watch(w -> w.entity(OrderEntity.class))
+// 不需要 observe —— ft_order 从 then(...) 自动推导
+FlowTestV2.scenario("simple")
+    .when(() -> orderService.createOrder(...))
+    .then(t -> t.success().table("ft_order", order -> order.inserted(1)))
+    .run();
+
+// 需要 observe —— 因为有路由条件
+FlowTestV2.scenario("with-route")
+    .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
+    .when(() -> orderService.createOrder(...))
+    .then(t -> t.success().table("ft_order", order -> order.inserted(1)))
+    .run();
 ```
 
-说明：
+### block-scoped 资源断言
 
-- `fixture(...)` 适合观察前置数据前后变化
-- `table(...)` 适合 watch-only 表
-- `entity(...)` 适合用实体类型推导表名、主键和列映射
+每个资源（table、entity、fixture）在自己的 lambda 里做断言：
 
-对于 `watch(w -> w.entity(OrderEntity.class))` 这种 typed observation，框架会按注解和约定自动推导元数据，通常不需要手动 `registerEntity(...)`。
+```java
+.then(t -> t
+    .success()
+    .table("ft_order", order -> order.inserted(1))
+    .table("ft_order_item", item -> item.inserted(2))
+    .entity(TestUser.class, e -> e.modified(1))
+    .fixture(user, u -> u.after(v -> assertThat(v.getBalance()).isEqualTo(80L))))
+```
 
 ### 动态表名
 
 ```java
-.watch(w -> w.table("ft_order_dynamic").dynamicTableBy("bucket", "a"))
+.observe(o -> o.table("ft_order_dynamic", r -> r.dynamicTableBy("bucket", "a")))
 ```
 
 如果同时需要 SQL 路由条件：
 
 ```java
-.watch(w -> w.table("ft_order_dynamic")
+.observe(o -> o.table("ft_order_dynamic", r -> r
     .dynamicTableBy("bucket", "a")
-    .route("tenant_id", 100L))
+    .route("tenant_id", 100L)))
 ```
 
 ### 多数据源
@@ -271,45 +298,46 @@ flowtest:
 
 ## 5. 最佳实践
 
-### 5.1 默认写法用 `watch + verify + run`
+### 5.1 默认写法用 `given -> when -> then -> run`
 
 推荐主路径：
 
 ```java
 FlowTestV2.scenario("...")
-    .given(...)
-    .watch(...)
-    .when(...)
-    .verify(ctx -> { ... })
+    .given(...)         // 可选，准备前置数据
+    .observe(...)       // 可选，大多数情况自动推导
+    .when(...)          // 执行业务动作
+    .then(t -> t        // 统一验证入口
+        .success()
+        .table(...)
+        .fixture(...))
     .run();
 ```
 
 ### 同一张表多条前置数据
 
-高频单条场景继续用 `persist(...)`。只有当同一个 entity 需要多条 fixture，而且大部分字段相同、少数字段不同的时候，再进入 `persistRows(...)`：
+高频单条场景继续用 `fixture(...)`。只有当同一个 entity 需要多条 fixture，而且大部分字段相同、少数字段不同的时候，再进入 `fixtureRows(...)`：
 
 ```java
 FlowTestV2.scenario("batch-users")
     .given(g -> g
-        .persistRows(TestUser.class, rows -> rows
+        .fixtureRows(TestUser.class, rows -> rows
             .defaults(
-                FixtureTrait.of(v -> v.setTenantId(100L)),
-                FixtureTrait.of(v -> v.setBalance(100L)))
+                FixtureTrait.mutate(v -> v.setTenantId(100L)),
+                FixtureTrait.mutate(v -> v.setBalance(100L)))
             .row("alice",
-                FixtureTrait.of(v -> v.setId(1L)),
-                FixtureTrait.of(v -> v.setName("Alice")))
+                FixtureTrait.mutate(v -> v.setId(1L)),
+                FixtureTrait.mutate(v -> v.setName("Alice")))
             .row("bob",
-                FixtureTrait.of(v -> v.setId(2L)),
-                FixtureTrait.of(v -> v.setName("Bob")))
+                FixtureTrait.mutate(v -> v.setId(2L)),
+                FixtureTrait.mutate(v -> v.setName("Bob")))
             .row("charlie",
-                FixtureTrait.of(v -> v.setId(3L)),
-                FixtureTrait.of(v -> v.setName("Charlie")),
-                FixtureTrait.of(v -> v.setBalance(200L)))))
-    .watch(w -> w.entity(TestUser.class))
-    .verify(ctx -> {
-        assertThat(ctx.fixture("alice", TestUser.class).before().getName()).isEqualTo("Alice");
-        assertThat(ctx.fixture("charlie", TestUser.class).before().getBalance()).isEqualTo(200L);
-    })
+                FixtureTrait.mutate(v -> v.setId(3L)),
+                FixtureTrait.mutate(v -> v.setName("Charlie")),
+                FixtureTrait.mutate(v -> v.setBalance(200L)))))
+    .then(t -> t
+        .success()
+        .entity(TestUser.class, e -> e.modified(0)))
     .run();
 ```
 
@@ -319,28 +347,26 @@ FlowTestV2.scenario("batch-users")
 - 每个 `row(...)` 再叠加自己的差异 trait
 - 如果同一属性重复设置，以 `row(...)` 内最后生效的值为准
 
-不要再把新文档和新示例建立在旧的 `.observe(...) + .then(...) + .execute(executor)` 上。旧 API 仍可用，但它已经不是推荐入口。
-
-### 5.2 `watch` 先写“资源”，再补“路由”
+### 5.2 `observe` 先写"资源"，再补"路由"
 
 可以把几个概念分开理解：
 
-- `watch`：我要观察什么
+- `observe`：我要观察什么（大多数情况从 `then(...)` 自动推导）
 - `.route(...)`：SQL 该怎么查
 - `.dynamicTableBy(...)`：实际查哪张物理表
 - `flowtest.v2.datasource.*`：去哪个数据源查
 
 把这 4 层分开后，分库分表测试会稳定很多，也更容易排查问题。
 
-### 5.3 只为 watch-only 表显式注册元数据
+### 5.3 只为需要特殊配置的表显式注册元数据
 
-推荐把 `JdbcObservationRegistry` 当成“覆盖和补充配置点”，不是“所有实体都手动登记的清单”。
+推荐把 `JdbcObservationRegistry` 当成"覆盖和补充配置点"，不是"所有实体都手动登记的清单"。
 
 实践建议：
 
 - fixture 实体：直接在 `given(...)` 里用，通常不需要额外注册
-- typed entity observation：直接 `watch(w -> w.entity(...))`
-- watch-only 表：显式 `registerTable(...)`
+- typed entity observation：直接在 `then(...)` 里用 `entity(...)`
+- 需要路由或动态表名的表：在 `observe(...)` 里声明
 - 字段映射不规则时：只补充差异配置
 
 ### 5.4 trait 只表达业务语义，不表达持久化细节
@@ -353,6 +379,18 @@ FlowTestV2.scenario("batch-users")
 - `frozen()`
 
 不推荐把 trait 写成 JDBC/SQL 操作集合。trait 的职责是描述 fixture 应该长成什么业务状态。
+
+使用 `FixtureTrait.mutate(...)` 定义 trait：
+
+```java
+private FixtureTrait<TestUser> vip() {
+    return FixtureTrait.mutate(u -> u.setLevel("VIP"));
+}
+
+private FixtureTrait<TestUser> balance(long amount) {
+    return FixtureTrait.mutate(u -> u.setBalance(amount));
+}
+```
 
 ### 5.5 cleanup 策略按数据形态选
 
@@ -397,10 +435,10 @@ FlowTestV2.scenario("batch-users")
 
 可直接参考的测试：
 
-- [flowtest-v2-junit5/src/test/java/com/github/sailfishc/flowtest/v2/junit5/FlowTestV2SimpleSpringBootTest.java](flowtest-v2-junit5/src/test/java/com/github/sailfishc/flowtest/v2/junit5/FlowTestV2SimpleSpringBootTest.java)
-- [flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java](flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
-- [flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java](flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java)
-- [flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
+- [flowtest-v2-junit5/src/test/java/.../FlowTestV2SimpleSpringBootTest.java](flowtest-v2-junit5/src/test/java/com/github/sailfishc/flowtest/v2/junit5/FlowTestV2SimpleSpringBootTest.java)
+- [flowtest-v2-testng/src/test/java/.../FlowTestV2SpringBootTestNgExampleTest.java](flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
+- [flowtest-v2-testng/src/test/java/.../FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java](flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java)
+- [flowtest-v2-testng/src/test/java/.../FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
 
 ## 8. 仓库结构
 

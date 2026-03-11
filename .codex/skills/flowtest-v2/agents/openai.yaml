@@ -1,0 +1,7 @@
+interface:
+  display_name: "FlowTest V2"
+  short_description: "Integrate FlowTest V2 and author tests"
+  default_prompt: "Use $flowtest-v2 to integrate FlowTest V2 into this Java test project and write a scenario with the latest DSL."
+
+policy:
+  allow_implicit_invocation: true

@@ -6,6 +6,8 @@
 
 `flowtest-v2` is split into a small runtime plus explicit integrations. The runtime does not guess routes, and it still requires explicit table/entity registration. For common JDBC usage, fixture adapters and datasource routing can now be derived from registration metadata plus Spring Boot properties.
 
+> **API 变更说明**：当前推荐 API 为 `given -> observe? -> when -> then -> run`。`observe(...)` 替代了旧的 `watch(...)`，`then(...)` 替代了旧的 `verify(...)`，`fixture(...)` 替代了旧的 `persist(...)`。`then(...)` 中提到的资源会被自动推导为观察目标，大多数情况不需要显式写 `observe(...)`。
+
 ## JUnit 5
 
 Use `FlowTestV2Extension` when you want JUnit 5 to bind the default executor for `.run()`. Parameter injection for `ScenarioExecutor` remains available, but it is no longer required in the common path.
@@ -25,12 +27,11 @@ static final FlowTestV2Extension FLOW = FlowTestV2Extension.builder()
 @Test
 void shouldCreateOrder() throws Exception {
     FlowTestV2.scenario("create-order")
-        .watch(w -> w.table("ft_order").route("tenant_id", 100L))
+        .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
         .when(() -> service.create(...))
-        .verify(ctx -> {
-            ctx.success();
-            assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
-        })
+        .then(t -> t
+            .success()
+            .table("ft_order", order -> order.inserted(1)))
         .run();
 }
 ```
@@ -63,7 +64,7 @@ For normal bean-style fixtures, the starter derives a default fixture adapter fr
 
 **Auto data filling:** The starter automatically configures `InstancioDataFiller` so fixture entities are pre-filled with random data before traits are applied. Set `flowtest.v2.data-filler=none` to disable.
 
-**Auto entity registration:** Fixture entities declared in `given(g -> g.persist(...))` are automatically registered in `JdbcObservationRegistry` if not already registered, and `watch(w -> w.entity(Foo.class))` will also lazily introspect and register `Foo.class` on first use. In the common path, you only need to manually register watch-only tables or explicit overrides.
+**Auto entity registration:** Fixture entities declared in `given(g -> g.fixture(...))` are automatically registered in `JdbcObservationRegistry` if not already registered, and `then(t -> t.entity(Foo.class, ...))` will also lazily introspect and register `Foo.class` on first use. In the common path, you only need to manually register watch-only tables or explicit overrides.
 `registerEntity(Class<?>)` can now resolve metadata from:
 - `@JdbcEntity`
 - MyBatis-Plus `@TableName`, `@TableId`, `@TableField`
@@ -133,18 +134,18 @@ JdbcObservationRegistry jdbcObservationRegistry() {
 }
 ```
 
-If only the physical table is dynamic, prefer the high-level watch DSL:
+If only the physical table is dynamic, prefer the high-level observe DSL:
 
 ```java
-.watch(w -> w.table("ft_order").dynamicTableBy("bucket", "a"))
+.observe(o -> o.table("ft_order", r -> r.dynamicTableBy("bucket", "a")))
 ```
 
 If the table is dynamic and the SQL still needs shard predicates, pass both scopes:
 
 ```java
-.watch(w -> w.table("ft_order")
+.observe(o -> o.table("ft_order", r -> r
     .dynamicTableBy("bucket", "a")
-    .route("tenant_id", 100L))
+    .route("tenant_id", 100L)))
 ```
 
 `TableRouteScope` is still available as the lower-level escape hatch when you need to prebuild a reusable scope object.
@@ -207,9 +208,8 @@ If multiple patterns match the same table, startup fails fast when the table is 
 Once routing is configured, the test DSL stays unchanged:
 
 ```java
-.watch(w -> w
-    .fixture(user)
-    .table("ft_order").route("tenant_id", 100L))
+.observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
+// fixture 会从 then(...) 自动推导，不需要在 observe 里声明
 ```
 
 The framework resolves `ft_user` and `ft_order` to the correct `DataSource` automatically.
@@ -250,7 +250,7 @@ as the copyable reference. It shows the full wiring:
 2. Make the test class extend `AbstractTestNGSpringContextTests`.
 3. Add `@SpringBootTest` and `@Listeners(FlowTestV2Listener.class)`.
 4. Register `JdbcObservationRegistry` in a test configuration. Only special persistence cases still need a custom `FixtureAdapterRegistry`.
-5. Build the scenario with `given -> watch -> when -> verify`, then finish with `.run()`.
+5. Build the scenario with `given -> observe? -> when -> then`, then finish with `.run()`.
 6. If you need direct executor access for a special case, inject `ScenarioExecutor` or use `@FlowTestV2Executor`. Do not implement `ScenarioExecutorProvider` in new Spring Boot tests.
 
 The example uses:
@@ -298,21 +298,21 @@ when you need a copyable reference for:
 - one single-table fixture prepared in `given(...)`
 - one sharded dynamic table that starts empty and only receives data during `act`
 - Spring Boot + TestNG + MyBatis-Plus + multi-datasource routing
-- the latest `.watch(...) + .verify(...) + .run()` path
+- the latest `.observe(...) + .then(...) + .run()` path
 
 That example shows:
 - `ft_user_profile` fixture data routed to `accountDs`
 - logical table `ft_trade_order` resolving to `ft_trade_order_a` / `ft_trade_order_b`
 - datasource pattern binding for `ft_trade_order_*`
 - `dynamicTableBy("bucket", "a")` and `.route("tenant_id", 100L)` used together
-- `watch(w -> w.fixture(user).table(...))` mixing fixture-backed and watch-only resources
+- `observe(o -> o.table(...))` for resources needing route config; fixtures auto-inferred from `then(...)`
 - default cleanup removing both the fixture row and the inserted dynamic-table row
 
 ### Complete Spring Boot + TestNG Single-Table Fixture + Sharded Dynamic Entity Reference Example
 
 Use `flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicEntityReferenceSpringBootTestNgExampleTest.java`
 when you want the same business scenario, but prefer typed observation:
-- `watch(w -> w.fixture(user).entity(TradeOrderEntity.class)...)`
+- `observe(o -> o.entity(TradeOrderEntity.class, ...))`
 - entity metadata inferred from `@TableName`, `@TableId`, and `@JdbcDynamicTable`
 - no upfront `registerEntity(...)` or `registerTable(...)` for the order resource
 
@@ -339,13 +339,15 @@ That example shows:
 Count assertions are still available, but `v2` now supports before/after row assertions:
 
 ```java
-.verify(ctx -> {
-    assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
-    assertThat(ctx.table("ft_order").modifiedOne().after().getColumn("status")).isEqualTo("PAID");
-});
+.then(t -> t
+    .success()
+    .table("ft_order", order -> order
+        .inserted(1)
+        .insertedRow(RowAssertions.columnEquals("status", "CREATED"))
+        .modifiedRow(ModifiedRowAssertions.changed("status", "CREATED", "PAID"))))
 ```
 
-Use `.change(resourceName, assertion)` when you need direct access to the full `ResourceChange`.
+Use `.satisfies(assertion)` or `.inspect(ctx -> ...)` when you need direct access to the full `ResourceChange`.
 
 ## Cleanup Notes
 

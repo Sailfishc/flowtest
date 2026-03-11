@@ -68,20 +68,16 @@ public class FlowTestV2SimpleSpringBootTest extends AbstractTestNGSpringContextT
         FixtureHandle<SimpleUser> user = FixtureHandle.named(SimpleUser.class, "testUser");
 
         FlowTestV2.scenario("create-user")
-            .given(g -> g.persist(user,
+            .given(g -> g.fixture(user,
                 idTrait(1L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .watch(w -> w
-                .fixture(user)
-                .table("simple_user"))
             .when(() -> userService.addBalance(1L, 50L))
-            .verify(ctx -> {
-                ctx.success();
-                assertThat(ctx.result()).isEqualTo(150L);
-                assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(150L);
-                assertThat(ctx.table("simple_user").modifiedCount()).isEqualTo(1L);
-            })
+            .then(t -> t
+                .success()
+                .returns(150L)
+                .fixture(user, u -> u.after(v -> assertThat(v.getBalance()).isEqualTo(150L)))
+                .table("simple_user", tbl -> tbl.modified(1)))
             .run();
 
         assertThat(countUsers()).isEqualTo(0L);
@@ -92,21 +88,19 @@ public class FlowTestV2SimpleSpringBootTest extends AbstractTestNGSpringContextT
         FixtureHandle<SimpleUser> user = FixtureHandle.named(SimpleUser.class, "user1");
 
         FlowTestV2.scenario("multiple-operations")
-            .given(g -> g.persist(user,
+            .given(g -> g.fixture(user,
                 idTrait(1L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .watch(w -> w.table("simple_user"))
             .when(() -> {
                 userService.addBalance(1L, 50L);
                 userService.addBalance(1L, 25L);
                 return userService.getBalance(1L);
             })
-            .verify(ctx -> {
-                ctx.success();
-                assertThat(ctx.result()).isEqualTo(175L);
-                assertThat(ctx.table("simple_user").modifiedCount()).isEqualTo(1L);
-            })
+            .then(t -> t
+                .success()
+                .returns(175L)
+                .table("simple_user", tbl -> tbl.modified(1)))
             .run();
     }
 
@@ -116,15 +110,15 @@ public class FlowTestV2SimpleSpringBootTest extends AbstractTestNGSpringContextT
     }
 
     private FixtureTrait<SimpleUser> idTrait(final Long id) {
-        return FixtureTrait.of(user -> user.setId(id));
+        return FixtureTrait.mutate(user -> user.setId(id));
     }
 
     private FixtureTrait<SimpleUser> nameTrait(final String name) {
-        return FixtureTrait.of(user -> user.setName(name));
+        return FixtureTrait.mutate(user -> user.setName(name));
     }
 
     private FixtureTrait<SimpleUser> balanceTrait(final Long balance) {
-        return FixtureTrait.of(user -> user.setBalance(balance));
+        return FixtureTrait.mutate(user -> user.setBalance(balance));
     }
 
     // ========== Test Application Configuration ==========

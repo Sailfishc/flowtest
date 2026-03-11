@@ -35,10 +35,11 @@ class FlowTestV2ExtensionBuilderTest {
     @Test
     void shouldResolveExecutorFromRegisteredExtension(ScenarioExecutor executor) throws Exception {
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("junit5-builder")
-            .watch(w -> w.table("orders"))
             .cleanup(CleanupPolicy.DELETE_INSERTED)
             .when(() -> "ok")
-            .then(t -> t.expectNoException().inserted("orders", 1))
+            .then(t -> t
+                .success()
+                .table("orders", order -> order.inserted(1)))
             .run();
 
         assertThat(result.getResult()).isEqualTo("ok");

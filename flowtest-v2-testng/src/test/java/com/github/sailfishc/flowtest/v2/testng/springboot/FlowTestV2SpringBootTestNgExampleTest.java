@@ -52,26 +52,26 @@ public class FlowTestV2SpringBootTestNgExampleTest extends AbstractTestNGSpringC
         FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
 
         FlowTestV2.scenario("spring-boot-testng-create-order")
-            .given(g -> g.persist(user,
+            .given(g -> g.fixture(user,
                 idTrait(1L),
                 tenantTrait(100L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .watch(w -> w
-                .fixture(user)
-                .table("ft_order").route("tenant_id", 100L))
+            .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
             .when(() -> orderService.createOrder(100L, 1L, 10L))
-            .verify(ctx -> {
-                ctx.success();
-                assertThat(ctx.result()).isEqualTo(10L);
-                assertThat(ctx.fixture(user).before().getBalance()).isEqualTo(100L);
-                assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(80L);
-                assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
-                assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
-                assertThat(ctx.table("ft_order").insertedOne().getColumn("id")).isEqualTo(10L);
-                assertThat(ctx.table("ft_order").insertedOne().getColumn("tenant_id")).isEqualTo(100L);
-                assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
-            })
+            .then(t -> t
+                .success()
+                .returns(10L)
+                .fixture(user, u -> u
+                    .after(v -> assertThat(v.getBalance()).isEqualTo(80L)))
+                .entity(TestUser.class, e -> e.modified(1))
+                .table("ft_order", order -> order
+                    .inserted(1)
+                    .inspect(ctx -> {
+                        assertThat(ctx.insertedOne().getColumn("id")).isEqualTo(10L);
+                        assertThat(ctx.insertedOne().getColumn("tenant_id")).isEqualTo(100L);
+                        assertThat(ctx.insertedOne().getColumn("status")).isEqualTo("CREATED");
+                    })))
             .run();
 
         assertThat(queryForLong("select count(*) from ft_user")).isEqualTo(0L);
@@ -84,19 +84,19 @@ public class FlowTestV2SpringBootTestNgExampleTest extends AbstractTestNGSpringC
     }
 
     private FixtureTrait<TestUser> idTrait(final Long id) {
-        return FixtureTrait.of(user -> user.setId(id));
+        return FixtureTrait.mutate(user -> user.setId(id));
     }
 
     private FixtureTrait<TestUser> tenantTrait(final Long tenantId) {
-        return FixtureTrait.of(user -> user.setTenantId(tenantId));
+        return FixtureTrait.mutate(user -> user.setTenantId(tenantId));
     }
 
     private FixtureTrait<TestUser> nameTrait(final String name) {
-        return FixtureTrait.of(user -> user.setName(name));
+        return FixtureTrait.mutate(user -> user.setName(name));
     }
 
     private FixtureTrait<TestUser> balanceTrait(final Long balance) {
-        return FixtureTrait.of(user -> user.setBalance(balance));
+        return FixtureTrait.mutate(user -> user.setBalance(balance));
     }
 
     @SpringBootConfiguration

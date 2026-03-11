@@ -58,18 +58,20 @@ public class FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest extend
         jdbcTemplate.update("insert into ft_mp_order_dynamic_b(id, tenant_id, status) values (702, 200, 'HISTORICAL')");
 
         FlowTestV2.scenario("spring-boot-testng-mybatis-plus-dynamic-table")
-            .watch(w -> w.table("ft_mp_order_dynamic")
+            .observe(o -> o.table("ft_mp_order_dynamic", r -> r
                 .dynamicTableBy("bucket", "a")
-                .route("tenant_id", 100L))
+                .route("tenant_id", 100L)))
             .when(() -> dynamicOrderService.createOrder("a", 100L, 701L))
-            .verify(ctx -> {
-                ctx.success();
-                assertThat(ctx.result()).isEqualTo(701L);
-                assertThat(ctx.table("ft_mp_order_dynamic").insertedCount()).isEqualTo(1L);
-                assertThat(ctx.table("ft_mp_order_dynamic").insertedOne().getColumn("id")).isEqualTo(701L);
-                assertThat(ctx.table("ft_mp_order_dynamic").insertedOne().getColumn("tenant_id")).isEqualTo(100L);
-                assertThat(ctx.table("ft_mp_order_dynamic").insertedOne().getColumn("status")).isEqualTo("CREATED");
-            })
+            .then(t -> t
+                .success()
+                .returns(701L)
+                .table("ft_mp_order_dynamic", order -> order
+                    .inserted(1)
+                    .inspect(ctx -> {
+                        assertThat(ctx.insertedOne().getColumn("id")).isEqualTo(701L);
+                        assertThat(ctx.insertedOne().getColumn("tenant_id")).isEqualTo(100L);
+                        assertThat(ctx.insertedOne().getColumn("status")).isEqualTo("CREATED");
+                    })))
             .run();
 
         assertThat(queryForLong("select count(*) from ft_mp_order_dynamic_a")).isEqualTo(0L);

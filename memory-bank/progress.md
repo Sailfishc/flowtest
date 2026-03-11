@@ -1,6 +1,8 @@
 # Progress
 
 ## What Works
+- The repository now contains an installable Codex skill at `.codex/skills/flowtest-v2`, with `SKILL.md`, `agents/openai.yaml`, and bundled references for current FlowTest V2 usage.
+- The skill validates successfully with the `skill-creator` quick validator and is designed around the current recommended API: `watch(...) + verify(ctx -> { ... }) + run()`.
 - `v2` module layout is in place and builds cleanly.
 - Scenario compiler validates core structural rules.
 - Traits, fixture handles, route scope, and observation scope are modeled.

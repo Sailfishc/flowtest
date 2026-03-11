@@ -10,14 +10,14 @@ class FixtureTraitTest {
     void composeAppliesTraitsInDeclarationOrder() {
         Account account = new Account();
 
-        FixtureTrait<Account> vip = FixtureTrait.of(new java.util.function.Consumer<Account>() {
+        FixtureTrait<Account> vip = FixtureTrait.mutate(new java.util.function.Consumer<Account>() {
             @Override
             public void accept(Account value) {
                 value.status = "VIP";
                 value.limit = 100;
             }
         });
-        FixtureTrait<Account> overrideLimit = FixtureTrait.of(new java.util.function.Consumer<Account>() {
+        FixtureTrait<Account> overrideLimit = FixtureTrait.mutate(new java.util.function.Consumer<Account>() {
             @Override
             public void accept(Account value) {
                 value.limit = 250;

@@ -7,9 +7,11 @@ import java.util.function.Consumer;
  */
 public interface ScenarioPlan<R> {
 
+    /**
+     * Add declarative and/or imperative expectations.
+     * Can be called multiple times; expectations are appended in declaration order.
+     */
     ScenarioPlan<R> then(Consumer<ThenSpec<R>> then);
-
-    ScenarioPlan<R> verify(ScenarioVerification<R> verification);
 
     ScenarioDefinition<R> definition();
 

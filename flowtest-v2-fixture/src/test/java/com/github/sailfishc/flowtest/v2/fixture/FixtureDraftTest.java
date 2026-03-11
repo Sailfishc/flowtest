@@ -19,13 +19,13 @@ class FixtureDraftTest {
             FixtureHandle.named(Account.class, "account"),
             Account.class,
             Arrays.<FixtureTrait<? super Account>>asList(
-                FixtureTrait.of(new java.util.function.Consumer<Account>() {
+                FixtureTrait.mutate(new java.util.function.Consumer<Account>() {
                     @Override
                     public void accept(Account value) {
                         value.status = "ACTIVE";
                     }
                 }),
-                FixtureTrait.of(new java.util.function.Consumer<Account>() {
+                FixtureTrait.mutate(new java.util.function.Consumer<Account>() {
                     @Override
                     public void accept(Account value) {
                         value.limit = 99;
@@ -51,8 +51,8 @@ class FixtureDraftTest {
             FixtureHandle.named(Account.class, "account"),
             Account.class,
             Arrays.<FixtureTrait<? super Account>>asList(
-                FixtureTrait.of(value -> value.limit = 99),
-                FixtureTrait.of(value -> value.status = "ACTIVE")
+                FixtureTrait.mutate(value -> value.limit = 99),
+                FixtureTrait.mutate(value -> value.status = "ACTIVE")
             )
         );
         FixtureSpec<AccountAudit> audit = new FixtureSpec<AccountAudit>(

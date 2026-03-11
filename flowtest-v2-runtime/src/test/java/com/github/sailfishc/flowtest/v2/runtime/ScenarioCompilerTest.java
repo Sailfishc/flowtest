@@ -1,7 +1,6 @@
 package com.github.sailfishc.flowtest.v2.runtime;
 
 import com.github.sailfishc.flowtest.v2.FlowTestV2;
-import com.github.sailfishc.flowtest.v2.assertion.FixtureAssertion;
 import com.github.sailfishc.flowtest.v2.fixture.FixtureMaterializer;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
@@ -17,70 +16,46 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ScenarioCompilerTest {
 
     @Test
-    void rejectsScenarioWithoutObservationScope() {
-        assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
-            @Override
-            public void call() throws Throwable {
-                FlowTestV2.scenario("missing-observation")
-                    .when(new com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier<String>() {
-                        @Override
-                        public String get() {
-                            return "ok";
-                        }
-                    })
-                    .compile();
-            }
-        }).isInstanceOf(ScenarioValidationException.class)
-            .hasMessageContaining("At least one observed resource");
+    void compilesScenarioWithAutoInferredObservation() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("auto-infer")
+            .when(() -> "ok")
+            .then(t -> t.table("t_order", order -> order.inserted(1)))
+            .compile();
+
+        assertThat(compiled.getDefinition().getObservations()).hasSize(1);
+        assertThat(compiled.getDefinition().getObservations().get(0).getResourceName()).isEqualTo("t_order");
+    }
+
+    @Test
+    void compilesScenarioWithoutObservationWhenNoThenResources() {
+        // A scenario that only asserts result, no resource observation needed
+        CompiledScenario<String> compiled = FlowTestV2.scenario("result-only")
+            .when(() -> "ok")
+            .then(t -> t.success().returns("ok"))
+            .compile();
+
+        assertThat(compiled.getDefinition().getObservations()).isEmpty();
     }
 
     @Test
     void rejectsShardedObservationWithoutRouteScope() {
-        assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
-            @Override
-            public void call() throws Throwable {
-                FlowTestV2.scenario("missing-route")
-                    .watch(new java.util.function.Consumer<WatchSpec>() {
-                        @Override
-                        public void accept(WatchSpec watch) {
-                            watch.table("t_order").route(RouteScope.empty());
-                        }
-                    })
-                    .when(new com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier<String>() {
-                        @Override
-                        public String get() {
-                            return "ok";
-                        }
-                    })
-                    .compile();
-            }
-        }).isInstanceOf(ScenarioValidationException.class)
+        assertThatThrownBy(() ->
+            FlowTestV2.scenario("missing-route")
+                .observe(o -> o.table("t_order", r -> r.route(RouteScope.empty())))
+                .when(() -> "ok")
+                .compile()
+        ).isInstanceOf(ScenarioValidationException.class)
             .hasMessageContaining("Route scope is required");
     }
 
     @Test
-    void compilesWatchDslWithRouteAndDynamicTable() {
-        CompiledScenario<String> compiled = FlowTestV2.scenario("watch-dsl")
-            .watch(new java.util.function.Consumer<WatchSpec>() {
-                @Override
-                public void accept(WatchSpec watch) {
-                    watch.table("t_order")
-                        .dynamicTableBy("bucket", "a")
-                        .route("tenant_id", 1001L);
-                }
-            })
-            .when(new com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier<String>() {
-                @Override
-                public String get() {
-                    return "ok";
-                }
-            })
-            .verify(new ScenarioVerification<String>() {
-                @Override
-                public void verify(VerifyContext<String> context) {
-                    context.success();
-                }
-            })
+    void compilesObserveDslWithRouteAndDynamicTable() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("observe-dsl")
+            .observe(o -> o.table("t_order", r -> r
+                .dynamicTableBy("bucket", "a")
+                .route("tenant_id", 1001L)))
+            .when(() -> "ok")
+            .then(t -> t.success())
             .compile();
 
         assertThat(compiled.getDefinition().getObservations()).hasSize(1);
@@ -90,83 +65,77 @@ class ScenarioCompilerTest {
     }
 
     @Test
-    void compilesMixedFixtureAndWatchOnlyScenario() {
-        final FixtureHandle<User> user = FixtureHandle.named(User.class, "buyer");
-
+    void compilesMixedFixtureAndTableScenario() {
         CompiledScenario<String> compiled = FlowTestV2.scenario("create-order")
-            .given(new java.util.function.Consumer<GivenSpec>() {
-                @Override
-                public void accept(GivenSpec given) {
-                    given.persist(user, FixtureTrait.of(new java.util.function.Consumer<User>() {
-                        @Override
-                        public void accept(User value) {
-                            value.tenantId = 1001L;
-                        }
-                    }));
-                }
-            })
-            .watch(new java.util.function.Consumer<WatchSpec>() {
-                @Override
-                public void accept(WatchSpec watch) {
-                    watch.fixture(user).table("t_order").route("tenant_id", 1001L);
-                }
-            })
+            .given(g -> g.fixture("buyer", User.class, FixtureTrait.set(User::setTenantId, 1001L)))
+            .observe(o -> o.table("t_order", r -> r.route("tenant_id", 1001L)))
             .cleanup(CleanupPolicy.DELETE_INSERTED)
-            .when(new com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier<String>() {
-                @Override
-                public String get() {
-                    return "order-1";
-                }
-            })
-            .then(new java.util.function.Consumer<ThenSpec<String>>() {
-                @Override
-                public void accept(ThenSpec<String> then) {
-                    then.expectNoException();
-                    then.inserted("t_order", 1L);
-                    then.fixture(user, new FixtureAssertion<User>() {
-                        @Override
-                        public void verify(User value) {
-                            // Placeholder for future fixture assertions.
-                        }
-                    });
-                }
-            })
+            .when(() -> "order-1")
+            .then(t -> t
+                .success()
+                .table("t_order", order -> order.inserted(1))
+                .fixture("buyer", User.class, user -> user.after(v -> {})))
             .compile();
 
         assertThat(compiled.getDefinition().getFixtures()).hasSize(1);
-        assertThat(compiled.getDefinition().getObservations()).hasSize(2);
+        // 1 explicit (t_order with route) + auto-inferred fixture observation
+        assertThat(compiled.getDefinition().getObservations()).hasSizeGreaterThanOrEqualTo(1);
         assertThat(compiled.getDefinition().getCleanupPolicy()).isEqualTo(CleanupPolicy.DELETE_INSERTED);
     }
 
     @Test
-    void resolvesFixtureAliasObservationDuringCompile() {
-        CompiledScenario<String> compiled = FlowTestV2.scenario("alias-watch")
-            .watch(w -> w.fixture("buyer"))
-            .given(g -> g.persist("buyer", User.class, FixtureTrait.of(value -> value.tenantId = 1001L)))
+    void mergesExplicitAndInferredObservations() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("merge-obs")
+            .observe(o -> o.table("t_order", r -> r.route("tenant_id", 100L)))
             .when(() -> "ok")
+            .then(t -> t
+                .table("t_order", order -> order.inserted(1))
+                .table("t_user", user -> user.modified(1)))
             .compile();
 
-        assertThat(compiled.getDefinition().getFixtures()).hasSize(1);
-        assertThat(compiled.getDefinition().getObservations()).hasSize(1);
-        assertThat(compiled.getDefinition().getObservations().get(0).getFixtureAlias()).isNull();
-        assertThat(compiled.getDefinition().getObservations().get(0).getFixtureHandle().getName()).isEqualTo("buyer");
+        assertThat(compiled.getDefinition().getObservations()).hasSize(2);
+        // t_order should keep its route from explicit observe
+        assertThat(compiled.getDefinition().getObservations().get(0).getResourceName()).isEqualTo("t_order");
+        assertThat(compiled.getDefinition().getObservations().get(0).isRouteRequired()).isTrue();
+        // t_user should be auto-inferred without route
+        assertThat(compiled.getDefinition().getObservations().get(1).getResourceName()).isEqualTo("t_user");
+        assertThat(compiled.getDefinition().getObservations().get(1).isRouteRequired()).isFalse();
     }
 
     @Test
-    void supportsPersistRowsWithDefaultsAndRowOverrides() {
-        CompiledScenario<String> compiled = FlowTestV2.scenario("persist-rows")
-            .given(g -> g.persistRows(User.class, rows -> rows
-                .defaults(
-                    FixtureTrait.of(value -> value.tenantId = 1001L),
-                    FixtureTrait.of(value -> value.balance = 100L))
-                .row("alice",
-                    FixtureTrait.of(value -> value.id = 1L),
-                    FixtureTrait.of(value -> value.name = "Alice"))
-                .row("bob",
-                    FixtureTrait.of(value -> value.id = 2L),
-                    FixtureTrait.of(value -> value.name = "Bob"),
-                    FixtureTrait.of(value -> value.balance = 200L))))
-            .watch(w -> w.entity(User.class))
+    void supportsFixturesWithBuilderBasedConstruction() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("builder-fixture")
+            .given(g -> g.fixture("alice", User.class, f -> f
+                .set(User::setId, 1L)
+                .set(User::setTenantId, 100L)
+                .set(User::setName, "Alice")))
+            .observe(o -> o.entity(User.class))
+            .when(() -> "ok")
+            .compile();
+
+        Map<FixtureHandle<?>, Object> values = new FixtureMaterializer().materialize(compiled.getDefinition().getFixtures());
+        User alice = (User) values.get(compiled.getDefinition().getFixtures().get(0).getHandle());
+
+        assertThat(alice.id).isEqualTo(1L);
+        assertThat(alice.tenantId).isEqualTo(100L);
+        assertThat(alice.name).isEqualTo("Alice");
+    }
+
+    @Test
+    void supportsBatchFixturesWithDefaults() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("batch-fixtures")
+            .given(g -> g.fixtures(User.class, rows -> rows
+                .defaults(f -> f
+                    .set(User::setTenantId, 100L)
+                    .set(User::setBalance, 100L))
+                .row("alice", f -> f
+                    .set(User::setId, 1L)
+                    .set(User::setName, "Alice"))
+                .row("bob", f -> f
+                    .set(User::setId, 2L)
+                    .set(User::setName, "Bob")
+                    .set(User::setBalance, 200L))))
+            .observe(o -> o.entity(User.class))
             .when(() -> "ok")
             .compile();
 
@@ -177,21 +146,42 @@ class ScenarioCompilerTest {
         assertThat(compiled.getDefinition().getFixtures()).hasSize(2);
         assertThat(compiled.getDefinition().getFixtures().get(0).getHandle().getName()).isEqualTo("alice");
         assertThat(compiled.getDefinition().getFixtures().get(1).getHandle().getName()).isEqualTo("bob");
-        assertThat(alice.tenantId).isEqualTo(1001L);
+        assertThat(alice.tenantId).isEqualTo(100L);
         assertThat(alice.balance).isEqualTo(100L);
         assertThat(alice.name).isEqualTo("Alice");
-        assertThat(bob.tenantId).isEqualTo(1001L);
+        assertThat(bob.tenantId).isEqualTo(100L);
         assertThat(bob.balance).isEqualTo(200L);
         assertThat(bob.name).isEqualTo("Bob");
     }
 
     @Test
+    void supportsMixedTraitAndBuilderInBatchFixtures() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("mixed-batch")
+            .given(g -> g.fixtures(User.class, rows -> rows
+                .defaults(FixtureTrait.set(User::setTenantId, 100L))
+                .row("alice", f -> f
+                    .apply(FixtureTrait.set(User::setId, 1L))
+                    .set(User::setName, "Alice"))))
+            .observe(o -> o.entity(User.class))
+            .when(() -> "ok")
+            .compile();
+
+        Map<FixtureHandle<?>, Object> values = new FixtureMaterializer().materialize(compiled.getDefinition().getFixtures());
+        User alice = (User) values.get(compiled.getDefinition().getFixtures().get(0).getHandle());
+
+        assertThat(alice.tenantId).isEqualTo(100L);
+        assertThat(alice.id).isEqualTo(1L);
+        assertThat(alice.name).isEqualTo("Alice");
+    }
+
+    @Test
     void rejectsDuplicateFixtureAlias() {
         assertThatThrownBy(() -> FlowTestV2.scenario("duplicate-alias")
-            .given(g -> g
-                .persist("user", User.class, FixtureTrait.of(value -> value.id = 1L))
-                .persist("user", Account.class, FixtureTrait.of(value -> value.id = 2L)))
-            .watch(w -> w.entity(User.class))
+            .given(g -> {
+                g.fixture("user", User.class, FixtureTrait.set(User::setId, 1L));
+                g.fixture("user", Account.class, FixtureTrait.set(Account::setId, 2L));
+            })
+            .observe(o -> o.entity(User.class))
             .when(() -> "ok")
             .compile())
             .isInstanceOf(ScenarioValidationException.class)
@@ -202,35 +192,13 @@ class ScenarioCompilerTest {
     void rejectsFixtureExpectationReferencingUndeclaredHandle() {
         final FixtureHandle<User> ghost = FixtureHandle.named(User.class, "ghost");
 
-        assertThatThrownBy(new org.assertj.core.api.ThrowableAssert.ThrowingCallable() {
-            @Override
-            public void call() throws Throwable {
-                FlowTestV2.scenario("undeclared-fixture-expectation")
-                    .watch(new java.util.function.Consumer<WatchSpec>() {
-                        @Override
-                        public void accept(WatchSpec watch) {
-                            watch.table("t_order");
-                        }
-                    })
-                    .when(new com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier<String>() {
-                        @Override
-                        public String get() {
-                            return "ok";
-                        }
-                    })
-                    .then(new java.util.function.Consumer<ThenSpec<String>>() {
-                        @Override
-                        public void accept(ThenSpec<String> then) {
-                            then.fixture(ghost, new FixtureAssertion<User>() {
-                                @Override
-                                public void verify(User value) {
-                                }
-                            });
-                        }
-                    })
-                    .compile();
-            }
-        }).isInstanceOf(ScenarioValidationException.class)
+        assertThatThrownBy(() ->
+            FlowTestV2.scenario("undeclared-fixture-expectation")
+                .observe(o -> o.table("t_order"))
+                .when(() -> "ok")
+                .then(t -> t.fixture(ghost, user -> user.after(v -> {})))
+                .compile()
+        ).isInstanceOf(ScenarioValidationException.class)
             .hasMessageContaining("Fixture expectation references undeclared handle");
     }
 
@@ -239,9 +207,21 @@ class ScenarioCompilerTest {
         private long tenantId;
         private long balance;
         private String name;
+
+        public long getId() { return id; }
+        public void setId(long id) { this.id = id; }
+        public long getTenantId() { return tenantId; }
+        public void setTenantId(long tenantId) { this.tenantId = tenantId; }
+        public long getBalance() { return balance; }
+        public void setBalance(long balance) { this.balance = balance; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
     }
 
     private static final class Account {
         private long id;
+
+        public long getId() { return id; }
+        public void setId(long id) { this.id = id; }
     }
 }

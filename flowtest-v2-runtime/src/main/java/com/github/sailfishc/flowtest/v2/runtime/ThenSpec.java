@@ -1,54 +1,68 @@
 package com.github.sailfishc.flowtest.v2.runtime;
 
-import com.github.sailfishc.flowtest.v2.assertion.FixtureAssertion;
-import com.github.sailfishc.flowtest.v2.assertion.FixtureChangeAssertion;
-import com.github.sailfishc.flowtest.v2.assertion.ModifiedRowAssertion;
-import com.github.sailfishc.flowtest.v2.assertion.ResourceChangeAssertion;
 import com.github.sailfishc.flowtest.v2.assertion.ResultAssertion;
-import com.github.sailfishc.flowtest.v2.assertion.RowAssertion;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 
+import java.util.function.Consumer;
+
 /**
- * Collects declarative expectations for the scenario.
+ * Unified verification DSL. Supports both declarative expectations and imperative assertions.
+ *
+ * <pre>{@code
+ * .then(t -> t
+ *     .success()
+ *     .returns(10L)
+ *     .table("ft_order", order -> order
+ *         .inserted(1)
+ *         .inspect(ctx -> assertThat(ctx.insertedOne().getColumn("status")).isEqualTo("CREATED")))
+ *     .fixture("user", TestUser.class, user -> user
+ *         .afterMatches(FixtureStatePatch.of(TestUser.class).set(TestUser::getBalance, 80L)))
+ *     .inspect(ctx -> {
+ *         // cross-resource assertions
+ *     }))
+ * }</pre>
  */
 public interface ThenSpec<R> {
 
-    ThenSpec<R> expectNoException();
-
-    ThenSpec<R> expectException(Class<? extends Throwable> exceptionType);
-
-    ThenSpec<R> outcome(ResultAssertion<R> assertion);
-
-    ThenSpec<R> inserted(String resourceName, long count);
-
-    ThenSpec<R> deleted(String resourceName, long count);
-
-    ThenSpec<R> modified(String resourceName, long count);
-
-    ThenSpec<R> change(String resourceName, ResourceChangeAssertion assertion);
-
-    ThenSpec<R> insertedRow(String resourceName, RowAssertion assertion);
-
-    ThenSpec<R> deletedRow(String resourceName, RowAssertion assertion);
-
-    ThenSpec<R> modifiedRow(String resourceName, ModifiedRowAssertion assertion);
-
-    <T> ThenSpec<R> fixture(FixtureHandle<T> handle, FixtureAssertion<T> assertion);
+    // --- Outcome assertions ---
 
     /**
-     * Assert a fixture with access to both before and after states.
+     * Assert that the action completed without exception.
+     * This is the default if neither success() nor failure() is called.
      */
-    <T> ThenSpec<R> fixtureChange(FixtureHandle<T> handle, FixtureChangeAssertion<T> assertion);
+    ThenSpec<R> success();
+
+    ThenSpec<R> failure(Class<? extends Throwable> exceptionType);
+
+    ThenSpec<R> failureSatisfying(
+        Class<? extends Throwable> exceptionType,
+        Consumer<? super Throwable> assertion
+    );
+
+    // --- Result assertions ---
+
+    ThenSpec<R> returns(R expected);
+
+    ThenSpec<R> returnsSatisfying(ResultAssertion<? super R> assertion);
+
+    // --- Resource assertions (block-scoped, auto-infers observation) ---
+
+    ThenSpec<R> table(String tableName, Consumer<ResourceExpectationSpec> spec);
+
+    ThenSpec<R> entity(Class<?> entityType, Consumer<ResourceExpectationSpec> spec);
+
+    // --- Fixture assertions (alias-first, auto-infers observation) ---
+
+    <T> ThenSpec<R> fixture(FixtureHandle<T> handle, Consumer<FixtureExpectationSpec<T>> spec);
+
+    <T> ThenSpec<R> fixture(String alias, Class<T> type, Consumer<FixtureExpectationSpec<T>> spec);
+
+    // --- Global escape hatch ---
 
     /**
-     * Start a fluent table-level expectation chain for the given table name.
-     * Expectations are appended eagerly. Call {@link TableChangeSpec#and()} to return here.
+     * Imperative assertion with full context access.
+     * Use for cross-resource / cross-fixture correlation assertions.
+     * Resources accessed here must be explicitly declared via {@code observe(...)}.
      */
-    TableChangeSpec<R> table(String tableName);
-
-    /**
-     * Start a fluent entity-level expectation chain for the given entity type.
-     * Expectations are appended eagerly. Call {@link TableChangeSpec#and()} to return here.
-     */
-    TableChangeSpec<R> entity(Class<?> entityType);
+    ThenSpec<R> inspect(ScenarioInspection<R> inspection);
 }

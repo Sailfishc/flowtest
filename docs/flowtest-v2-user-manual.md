@@ -5,11 +5,11 @@
 当前 `v2` 的核心设计是 4 个概念：
 
 - `given`：准备前置数据，可选
-- `observe`：声明要观测的表或实体，必填
+- `observe`：声明要观测的表或实体，**可选**（框架会从 `then(...)` 自动推导）
 - `when`：执行业务动作
-- `then`：断言结果、数据变化和 fixture 状态
+- `then`：**唯一的验证入口**，断言结果、数据变化和 fixture 状态
 
-如果你只记一条规则，记这条：`observe` 决定框架会对哪些资源做快照、diff 和 cleanup，它不依赖 `given` 是否造数。
+如果你只记一条规则，记这条：**`then(...)` 里引用的资源会被自动观测**，你只需要在需要 route 条件或动态表参数时才显式写 `observe(...)`。
 
 ## 1. 适用范围
 
@@ -25,8 +25,9 @@
 - 多数据源
 - MyBatis-Plus 元数据识别
 - **自动数据填充**：fixture 实例在 trait 应用前自动填入随机数据（基于 Instancio）
-- **Fixture 实体自动注册**：`given(g -> g.persist(...))` 声明的实体类会自动注册到 JDBC 元数据，无需手动调用 `registerEntity`
-- **动态表路由自动推导**：`observe.fixture(handle)` 可自动从 fixture 实例的动态表属性推导 `TableRouteScope`
+- **Fixture 实体自动注册**：`given(g -> g.fixture(...))` 声明的实体类会自动注册到 JDBC 元数据
+- **观测自动推导**：`then(...)` 中引用的 table/entity/fixture 会自动注册为观测资源
+- **动态表路由自动推导**：`observe(o -> o.entity(handle))` 可自动从 fixture 实例的动态表属性推导 `TableRouteScope`
 
 当前限制：
 
@@ -40,12 +41,10 @@
 
 ### 1.1 场景与能力对照
 
-下面这张表先把几个最容易混淆的概念拆开：
-
 | 概念 | 它解决的问题 | 典型特征 | 对应 API | 什么时候用 |
 | --- | --- | --- | --- | --- |
-| `act-only` | 测试前是否需要准备数据 | 没有 `given(...)`，数据只在 `when(...)` 中产生或变化 | `watch(...).when(...).verify(...)` | 只关心 act 产生的新数据或存量变化 |
-| `混合场景` | 测试前是否需要准备数据 | 有 `given(...)`，同时观察 fixture 和 act 产生的数据 | `given(...).watch(...).when(...).verify(...)` | 先有前置数据，再执行 act 并校验变化 |
+| `act-only` | 测试前是否需要准备数据 | 没有 `given(...)`，数据只在 `when(...)` 中产生或变化 | `.when(...).then(...)` | 只关心 act 产生的新数据或存量变化 |
+| `混合场景` | 测试前是否需要准备数据 | 有 `given(...)`，同时观察 fixture 和 act 产生的数据 | `given(...).when(...).then(...)` | 先有前置数据，再执行 act 并校验变化 |
 | `分库分表` | SQL 如何合法路由 | 快照、diff、cleanup 的 SQL 必须带分片条件 | `.route(...)`、`RouteScope` | 中间件要求 SQL 带 `tenant_id`、`user_id` 等路由字段 |
 | `动态表名` | 运行时实际查哪张物理表 | 逻辑表固定，物理表会变成 `table_a`、`table_b` 之类 | `.dynamicTableBy(...)`、`TableRouteScope`、`@JdbcDynamicTable` | 同一个逻辑表会根据 bucket、月份、类型切到不同物理表 |
 | `多数据源` | 这张表属于哪个 `DataSource` | 表和数据源的映射是基础设施配置，不应写在 DSL 里 | `flowtest.v2.datasource.*` | 一条场景会同时观察不同库里的表 |
@@ -61,12 +60,12 @@
 
 | 场景 | 示例写法 |
 | --- | --- |
-| `act-only + 普通表` | `.watch(w -> w.table("ft_order"))` |
-| `act-only + 分库分表` | `.watch(w -> w.table("ft_order").route("tenant_id", 100L))` |
-| `act-only + 动态表` | `.watch(w -> w.table("ft_order").dynamicTableBy("bucket", "a"))` |
-| `act-only + 动态表 + 分库分表` | `.watch(w -> w.table("ft_order").dynamicTableBy("bucket", "a").route("tenant_id", 100L))` |
-| `混合场景 + 普通表` | `.given(...).watch(w -> w.fixture("user").table("ft_order"))` |
-| `混合场景 + 动态表 + 分库分表` | `.given(...).watch(w -> w.fixture("user").table("ft_order").dynamicTableBy("bucket", "a").route("tenant_id", 100L))` |
+| `act-only + 普通表` | `.when(...).then(t -> t.table("ft_order", o -> o.inserted(1)))` |
+| `act-only + 分库分表` | `.observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L))).when(...).then(...)` |
+| `act-only + 动态表` | `.observe(o -> o.table("ft_order", r -> r.dynamicTableBy("bucket", "a"))).when(...).then(...)` |
+| `act-only + 动态表 + 分库分表` | `.observe(o -> o.table("ft_order", r -> r.dynamicTableBy("bucket", "a").route("tenant_id", 100L))).when(...).then(...)` |
+| `混合场景 + 普通表` | `.given(...).when(...).then(t -> t.fixture(user, ...).table("ft_order", ...))` |
+| `混合场景 + 动态表 + 分库分表` | `.given(...).observe(o -> o.table("ft_order", r -> r.dynamicTableBy("bucket", "a").route("tenant_id", 100L))).when(...).then(...)` |
 
 ## 2. 模块选择
 
@@ -142,16 +141,6 @@
 </plugin>
 ```
 
-如果要跑 MyBatis-Plus 示例，再补：
-
-```xml
-<dependency>
-    <groupId>com.baomidou</groupId>
-    <artifactId>mybatis-plus-boot-starter</artifactId>
-    <scope>test</scope>
-</dependency>
-```
-
 ### 3.2 Spring Boot + JUnit 5
 
 ```xml
@@ -193,9 +182,7 @@
 
 对于 **fixture 实体**（在 `given(...)` 中声明的实体），框架也会在运行时自动注册 JDBC 元数据并生成默认的 fixture adapter。
 
-所以最简场景下你不需要手动注册 fixture 用到的实体类；如果你写的是 `watch(w -> w.entity(TestUser.class))`，同样不需要手动 `registerEntity(...)`。
-
-对于 **watch-only 表**（只在 `watch(...)` 中观测但不造数的表），你仍然需要显式注册。
+对于 **observe-only 表**（只在 `observe(...)` 中声明但不造数的表），或者需要 route 条件的表，你需要显式注册。
 
 如果你走的是 Spring Boot starter，starter 负责自动装配这些 Bean：
 
@@ -230,40 +217,7 @@ JdbcObservationRegistry jdbcObservationRegistry() {
 
 ### 4.2 MyBatis-Plus 实体
 
-常规场景不再要求额外写 `@JdbcEntity`。只要实体上已经有：
-
-- `@TableName`
-- `@TableId`
-- `@TableField`
-
-就可以直接：
-
-```java
-@TableName("ft_order")
-public class OrderEntity {
-
-    @TableId
-    private Long id;
-
-    @TableField("tenant_id")
-    private Long tenantId;
-}
-```
-
-```java
-@Bean
-JdbcObservationRegistry jdbcObservationRegistry() {
-    return new JdbcObservationRegistry();
-}
-```
-
-如果你后面直接写：
-
-```java
-.watch(w -> w.entity(OrderEntity.class))
-```
-
-框架会按实体注解自动推导表名、主键、列名和动态表规则。
+常规场景不再要求额外写 `@JdbcEntity`。只要实体上已经有 `@TableName`、`@TableId`、`@TableField` 就可以直接使用。
 
 ### 4.3 字段名和列名不一致
 
@@ -285,30 +239,31 @@ JdbcObservationRegistry jdbcObservationRegistry() {
 下面这条测试覆盖了最基本的混合场景：
 
 - `given` 准备一个用户
-- `watch` 观察用户和订单表
+- `observe` 声明需要 route 条件的表（可选，普通表不需要）
 - `when` 执行业务
-- `verify` 在一个上下文里同时断言返回值、fixture 状态、表变化
+- `then` 断言结果、fixture 状态、表变化
 
 ```java
 ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
-    .given(g -> g.persist("user", TestUser.class,
-        FixtureTrait.of(v -> v.setId(1L)),
-        FixtureTrait.of(v -> v.setTenantId(100L)),
-        FixtureTrait.of(v -> v.setName("Alice")),
-        FixtureTrait.of(v -> v.setBalance(100L))))
-    .watch(w -> w
-        .fixture("user")
-        .table("ft_order").route("tenant_id", 100L))
+    .given(g -> g.fixture("user", TestUser.class,
+        FixtureTrait.mutate(v -> v.setId(1L)),
+        FixtureTrait.mutate(v -> v.setTenantId(100L)),
+        FixtureTrait.mutate(v -> v.setName("Alice")),
+        FixtureTrait.mutate(v -> v.setBalance(100L))))
+    .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
     .when(() -> orderService.createOrder(100L, 1L, 10L))
-    .verify(ctx -> {
-        ctx.success();
-        assertThat(ctx.result()).isEqualTo(10L);
-        assertThat(ctx.fixture("user", TestUser.class).before().getBalance()).isEqualTo(100L);
-        assertThat(ctx.fixture("user", TestUser.class).after().getBalance()).isEqualTo(80L);
-        assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
-        assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
-        assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
-    })
+    .then(t -> t
+        .success()
+        .returns(10L)
+        .fixture("user", TestUser.class, u -> u
+            .before(v -> assertThat(v.getBalance()).isEqualTo(100L))
+            .after(v -> assertThat(v.getBalance()).isEqualTo(80L)))
+        .entity(TestUser.class, e -> e.modified(1))
+        .table("ft_order", order -> order
+            .inserted(1)
+            .inspect(ctx -> {
+                assertThat(ctx.insertedOne().getColumn("status")).isEqualTo("CREATED");
+            })))
     .run();
 ```
 
@@ -316,219 +271,254 @@ ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
 
 运行结束后，框架会按 cleanup 策略自动清理。
 
-如果你更偏好旧的低层 DSL，`.observe(...)` 和 `.then(...)` 仍然可用；新版本推荐优先使用 `.watch(...) + .verify(ctx -> { ... })`，因为它能在一个地方同时拿到：
+### 5.1 观测自动推导
 
-- `ctx.result()`：`act` 返回值
-- `ctx.fixture("alias", Type.class).before()/after()`：fixture 执行前后状态
-- `ctx.table("...")` / `ctx.entity(...)`：diff 后的资源变化
+`then(...)` 中引用的资源会被自动推导为观测对象。你只在以下情况才需要显式写 `observe(...)`：
 
-### 5.1.1 推荐的 fixture 引用方式
-
-新 DSL 推荐用 alias，而不是让测试代码显式持有 `FixtureHandle`：
+- 资源需要 **route 条件**（分库分表）
+- 资源需要 **动态表参数**
+- 资源只在 `inspect(...)` 里访问，不在声明式断言中出现
 
 ```java
-.given(g -> g.persist("user", TestUser.class, ...))
-.watch(w -> w.fixture("user"))
-.verify(ctx -> {
-    assertThat(ctx.fixture("user", TestUser.class).after().getBalance()).isEqualTo(80L);
-})
+// 普通场景：不需要 observe，自动推导
+FlowTestV2.scenario("simple")
+    .when(() -> service.doSomething())
+    .then(t -> t
+        .success()
+        .table("ft_order", order -> order.inserted(1)))
+    .run();
+
+// 分库分表：需要 observe 指定 route
+FlowTestV2.scenario("sharded")
+    .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
+    .when(() -> service.doSomething())
+    .then(t -> t
+        .success()
+        .table("ft_order", order -> order.inserted(1)))
+    .run();
 ```
 
-如果你需要兼容旧代码，`FixtureHandle` 版本仍然可用；但新测试和新文档建议统一使用 alias。
+### 5.2 Fixture 引用方式
 
-### 5.1.2 同一个 entity 的多条前置数据
+新 DSL 支持两种 fixture 引用方式：
 
-当一张表需要多条 fixture，而且大部分字段相同、少数字段不同的时候，推荐使用 `persistRows(...)`：
+**Alias 方式（推荐）：**
+
+```java
+.given(g -> g.fixture("user", TestUser.class, ...))
+.then(t -> t.fixture("user", TestUser.class, u -> u
+    .after(v -> assertThat(v.getBalance()).isEqualTo(80L))))
+```
+
+**FixtureHandle 方式：**
+
+```java
+FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
+
+.given(g -> g.fixture(user, ...))
+.then(t -> t.fixture(user, u -> u
+    .after(v -> assertThat(v.getBalance()).isEqualTo(80L))))
+```
+
+两种方式等价，alias 方式更简洁。
+
+### 5.3 同一个 entity 的多条前置数据
+
+当一张表需要多条 fixture，使用 `fixtures(...)`：
 
 ```java
 FlowTestV2.scenario("batch-users")
-    .given(g -> g
-        .persistRows(TestUser.class, rows -> rows
-            .defaults(
-                FixtureTrait.of(v -> v.setTenantId(100L)),
-                FixtureTrait.of(v -> v.setBalance(100L)))
-            .row("alice",
-                FixtureTrait.of(v -> v.setId(1L)),
-                FixtureTrait.of(v -> v.setName("Alice")))
-            .row("bob",
-                FixtureTrait.of(v -> v.setId(2L)),
-                FixtureTrait.of(v -> v.setName("Bob")))
-            .row("charlie",
-                FixtureTrait.of(v -> v.setId(3L)),
-                FixtureTrait.of(v -> v.setName("Charlie")),
-                FixtureTrait.of(v -> v.setBalance(200L)))))
-    .watch(w -> w.entity(TestUser.class))
-    .verify(ctx -> {
-        assertThat(ctx.fixture("alice", TestUser.class).before().getName()).isEqualTo("Alice");
-        assertThat(ctx.fixture("charlie", TestUser.class).before().getBalance()).isEqualTo(200L);
-    })
+    .given(g -> g.fixtures(TestUser.class, rows -> rows
+        .defaults(f -> f
+            .set(TestUser::setTenantId, 100L)
+            .set(TestUser::setBalance, 100L))
+        .row("alice", f -> f
+            .set(TestUser::setId, 1L)
+            .set(TestUser::setName, "Alice"))
+        .row("bob", f -> f
+            .set(TestUser::setId, 2L)
+            .set(TestUser::setName, "Bob"))
+        .row("charlie", f -> f
+            .set(TestUser::setId, 3L)
+            .set(TestUser::setName, "Charlie")
+            .set(TestUser::setBalance, 200L))))
+    .when(() -> "ok")
+    .then(t -> t.success())
     .run();
 ```
 
 语义规则：
 
 - `defaults(...)` 先应用到整组 row
-- `row(...)` 再叠加差异 trait
+- `row(...)` 再叠加差异
 - 同一字段重复设置时，以 `row(...)` 中最后生效的值为准
-- 具名 `row("alias", ...)` 可以在 `watch/verify/TraitContext` 里继续引用
+- 具名 `row("alias", ...)` 可以在 `then(...)` 里继续引用
 
-### 5.1 数据库断言怎么写
+也支持 trait 风格：
 
-对数据库变化做断言时，推荐优先使用：
+```java
+.row("alice", FixtureTrait.set(TestUser::setId, 1L))
+```
 
-- `.verify(ctx -> { ... })`
-- `ctx.table("...")` 或 `ctx.entity(...)`
-- `assertThat(...)`
+### 5.4 数据库断言怎么写
 
-`ResourceVerifyContext` 统一提供这些能力：
+所有数据库断言都通过 `then(...)` 完成。有两种风格：
 
-- `insertedCount()` / `deletedCount()` / `modifiedCount()`
-- `insertedRows()` / `deletedRows()` / `modifiedRows()`
-- `insertedOne()` / `deletedOne()` / `modifiedOne()`
+**声明式（推荐简单场景）：**
 
-常见写法如下。
+```java
+.then(t -> t
+    .success()
+    .table("ft_order", order -> order.inserted(1))
+    .entity(TestUser.class, user -> user.modified(1)))
+```
+
+**声明式 + 块内 inspect（推荐需要值断言时）：**
+
+```java
+.then(t -> t
+    .table("ft_order", order -> order
+        .inserted(1)
+        .inspect(ctx -> {
+            assertThat(ctx.insertedOne().getColumn("status")).isEqualTo("CREATED");
+            assertThat(ctx.insertedOne().getColumn("tenant_id")).isEqualTo(100L);
+        })))
+```
+
+**全局 inspect（跨资源关联断言）：**
+
+```java
+.then(t -> t
+    .table("ft_order", order -> order.inserted(1))
+    .table("ft_payment", payment -> payment.inserted(1))
+    .inspect(ctx -> {
+        Long orderId = (Long) ctx.table("ft_order").insertedOne().getColumn("id");
+        assertThat(ctx.table("ft_payment").insertedOne().getColumn("order_id"))
+            .isEqualTo(orderId);
+    }))
+```
+
+### 5.5 常见断言模式
 
 **新增**
 
 ```java
-.verify(ctx -> {
-    assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
-    assertThat(ctx.table("ft_order").insertedOne().getColumn("id")).isEqualTo(10L);
-    assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
-})
-```
-
-如果你观察的是实体，也可以直接写：
-
-```java
-.verify(ctx -> {
-    assertThat(ctx.entity(OrderEntity.class).insertedCount()).isEqualTo(1L);
-    assertThat(ctx.entity(OrderEntity.class).insertedOne().getColumn("status")).isEqualTo("CREATED");
-})
+.then(t -> t.table("ft_order", order -> order
+    .inserted(1)
+    .insertedRow(RowAssertions.columnEquals("status", "CREATED"))))
 ```
 
 **修改**
 
 ```java
-.verify(ctx -> {
-    assertThat(ctx.table("ft_user").modifiedCount()).isEqualTo(1L);
-    assertThat(ctx.table("ft_user").modifiedOne().before().getColumn("balance")).isEqualTo(100L);
-    assertThat(ctx.table("ft_user").modifiedOne().after().getColumn("balance")).isEqualTo(80L);
-})
+.then(t -> t.table("ft_user", user -> user
+    .modified(1)
+    .modifiedRow(ModifiedRowAssertions.changed("balance", 100L, 80L))))
 ```
 
 **删除**
 
 ```java
-.verify(ctx -> {
-    assertThat(ctx.table("ft_order").deletedCount()).isEqualTo(1L);
-    assertThat(ctx.table("ft_order").deletedOne().getColumn("id")).isEqualTo(10L);
-})
+.then(t -> t.table("ft_order", order -> order.deleted(1)))
 ```
 
-**多条数据**
+**同表混合操作**
 
 ```java
-.verify(ctx -> {
-    assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(2L);
-    assertThat(ctx.table("ft_order").insertedRows())
-        .extracting(row -> row.getColumn("status"))
-        .containsExactly("CREATED", "CREATED");
-})
+.then(t -> t.table("ft_order", order -> order
+    .inserted(2)
+    .modified(1)
+    .deleted(1)))
 ```
 
-如果结果顺序不稳定，改用 `containsExactlyInAnyOrder(...)`，或者直接：
+**多条数据排序断言**
 
 ```java
-.verify(ctx -> {
-    assertThat(ctx.table("ft_order").insertedRows())
-        .anySatisfy(row -> {
-            assertThat(row.getColumn("id")).isEqualTo(101L);
-            assertThat(row.getColumn("status")).isEqualTo("CREATED");
-        });
-})
+.then(t -> t.table("ft_order", order -> order
+    .inserted(2)
+    .insertedRows(rows -> rows
+        .sortBy("id")
+        .row(0, RowAssertions.columnEquals("status", "CREATED"))
+        .row(1, RowAssertions.columnEquals("status", "PAID")))))
 ```
 
-**混合断言**
-
-如果同一个场景里既要看返回值，又要看 fixture 和表变化，推荐把断言放在一个 `verify` 里：
+**Fixture before/after 断言**
 
 ```java
-.verify(ctx -> {
-    ctx.success();
-    assertThat(ctx.result()).isEqualTo(10L);
-    assertThat(ctx.fixture("user", TestUser.class).after().getBalance()).isEqualTo(80L);
-    assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
-    assertThat(ctx.table("ft_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
-})
+.then(t -> t.fixture(user, u -> u
+    .before(v -> assertThat(v.getBalance()).isEqualTo(100L))
+    .after(v -> assertThat(v.getBalance()).isEqualTo(80L))
+    .change((before, after) -> {
+        assertThat(after.getBalance()).isLessThan(before.getBalance());
+    })))
 ```
 
 **基于 fixture before-state 的全字段断言**
 
-如果前面已经在 `given(...)` 里准备了 fixture，而你只关心少数字段发生变化，可以直接用 `matchesAfter(...)`：
+如果你只关心少数字段发生变化，可以用 `afterMatches(...)`：
 
 ```java
-.verify(ctx -> {
-    ctx.success();
-    ctx.fixture("user", TestUser.class).matchesAfter(
-        FixtureStatePatch.of(TestUser.class)
-            .set(TestUser::getBalance, 80L)
-            .ignore(TestUser::getUpdatedAt, TestUser::getVersion));
-    assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
-})
+.then(t -> t.fixture(user, u -> u
+    .afterMatches(FixtureStatePatch.of(TestUser.class)
+        .set(TestUser::getBalance, 80L)
+        .ignore(TestUser::getUpdatedAt))))
 ```
 
 这段断言的语义是：
 
 - `balance` 应该变成 `80L`
-- `updatedAt`、`version` 不参与比较
+- `updatedAt` 不参与比较
 - 其余受管理的持久化字段默认都必须和 `before()` 保持一致
 
-这种写法比逐字段把 unchanged 列再写一遍更适合 fixture-backed 修改场景，也更容易发现“意外改了别的字段”的回归。
-
-### 5.2 什么时候用 `.then(...)`
-
-`.then(...)` 仍然适合简单、模板化的断言，尤其是只关心计数时：
+**返回值断言**
 
 ```java
 .then(t -> t
-    .expectNoException()
-    .inserted("ft_order", 1)
-    .modified(TestUser.class.getName(), 1))
+    .success()                    // 无异常
+    .returns(10L))                // 返回值等于 10L
+
+// 或者自定义断言
+.then(t -> t.returnsSatisfying((result, failure) -> {
+    assertThat(result).isGreaterThan(0L);
+}))
 ```
 
-如果你偏好声明式的行级断言，也可以配合 `RowAssertions` / `ModifiedRowAssertions`：
+**预期异常**
 
 ```java
-.then(t -> t
-    .insertedRow("ft_order", RowAssertions.columns(
-        "id", 10L,
-        "status", "CREATED",
-        "tenant_id", 100L
-    ))
-    .modifiedRow("ft_user", ModifiedRowAssertions.changed("balance", 100L, 80L)))
+.then(t -> t.failure(IllegalArgumentException.class))
+
+// 或者带断言
+.then(t -> t.failureSatisfying(IllegalArgumentException.class,
+    ex -> assertThat(ex.getMessage()).contains("invalid")))
 ```
 
-推荐收敛规则：
+**完整复杂场景**
 
-- 简单计数断言：`.then(...)` 可以继续用
-- 混合场景、复杂场景、跨资源场景：优先 `.verify(ctx -> { ... })`
-
-完整可运行版本见：
-
-- [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
+```java
+FlowTestV2.scenario("create-order")
+    .given(g -> g.fixture(user,
+        FixtureTrait.mutate(v -> { v.setId(1L); v.setBalance(100L); })))
+    .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
+    .when(() -> orderService.createOrder(100L, 1L, 10L))
+    .then(t -> t
+        .success()
+        .returns(10L)
+        .fixture(user, u -> u
+            .afterMatches(FixtureStatePatch.of(TestUser.class)
+                .set(TestUser::getBalance, 80L)))
+        .entity(TestUser.class, e -> e.modified(1))
+        .table("ft_order", order -> order
+            .inserted(1)
+            .inspect(ctx -> {
+                assertThat(ctx.insertedOne().getColumn("status")).isEqualTo("CREATED");
+            })))
+    .run();
+```
 
 ## 6. 第四步：接入测试框架
 
 ### 6.1 Spring Boot + TestNG
-
-推荐接入顺序：
-
-1. 测试类继承 `AbstractTestNGSpringContextTests`
-2. 标注 `@SpringBootTest`
-3. 标注 `@Listeners(FlowTestV2Listener.class)`
-4. 在场景里直接调用 `.run()`
-5. 需要直接访问执行器时，再注入 `ScenarioExecutor` 或使用 `@FlowTestV2Executor`
 
 ```java
 @SpringBootTest
@@ -537,17 +527,18 @@ public class OrderFlowTest extends AbstractTestNGSpringContextTests {
 }
 ```
 
-Spring Boot 场景下，`FlowTestV2Listener` 会自动从 `ApplicationContext` 解析 `ScenarioExecutor`。`ScenarioExecutorProvider` 仅作为兼容旧写法的 fallback，不再是推荐用法。
-
-`@FlowTestV2Executor` 现在是可选的。只有在你确实要直接访问当前 `ScenarioExecutor` 字段时再加；常规场景直接 `.run()` 即可。
-
-完整示例：
-
-- [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
+Spring Boot 场景下，`FlowTestV2Listener` 会自动从 `ApplicationContext` 解析 `ScenarioExecutor`。
 
 ### 6.2 Spring Boot + JUnit 5
 
-Spring Boot 场景下，推荐直接标注 `@FlowTestV2Test` 然后调用 `.run()`。扩展会自动从 Spring `ApplicationContext` 获取 `ScenarioExecutor`。只有在你确实需要手动访问执行器时，才额外注入 `ScenarioExecutor` 参数或字段。
+推荐直接标注 `@FlowTestV2Test` 然后调用 `.run()`：
+
+```java
+@SpringBootTest
+@FlowTestV2Test
+class OrderFlowTest {
+}
+```
 
 纯 JUnit 5 builder 方式：
 
@@ -568,38 +559,49 @@ static final FlowTestV2Extension FLOW = FlowTestV2Extension.builder()
 
 ### 7.1 只有 act 产生数据
 
-没有 fixture 也可以：
+没有 fixture 也可以，观测自动从 `then(...)` 推导：
 
 ```java
 FlowTestV2.scenario("act-only")
-    .watch(w -> w.table("ft_order").route("tenant_id", 100L))
     .when(() -> orderService.createOrder(100L, 1L, 10L))
-    .verify(ctx -> {
-        ctx.success();
-        assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
-    })
+    .then(t -> t
+        .success()
+        .table("ft_order", order -> order.inserted(1)))
     .run();
 ```
 
-### 7.2 fixture-backed + watch-only 混合
+如果需要 route 条件：
 
 ```java
-.watch(w -> w
-    .fixture(user)
-    .table("ft_order").route("tenant_id", 100L))
+FlowTestV2.scenario("act-only-sharded")
+    .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
+    .when(() -> orderService.createOrder(100L, 1L, 10L))
+    .then(t -> t
+        .success()
+        .table("ft_order", order -> order.inserted(1)))
+    .run();
 ```
 
-这里：
+### 7.2 fixture-backed + 表观测混合
 
-- `fixture(user)` 观察前置用户状态
-- `ft_order` 是 act-only 的 watch-only 表
+```java
+FlowTestV2.scenario("mixed")
+    .given(g -> g.fixture(user, UserTraits.id(1L), UserTraits.balance(100L)))
+    .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
+    .when(() -> orderService.createOrder(100L, 1L, 10L))
+    .then(t -> t
+        .success()
+        .fixture(user, u -> u.after(v -> assertThat(v.getBalance()).isEqualTo(80L)))
+        .table("ft_order", order -> order.inserted(1)))
+    .run();
+```
 
 ### 7.3 分库分表
 
-如果 SQL 必须带分片条件，就给资源追加 `.route(...)`：
+如果 SQL 必须带分片条件，就在 `observe(...)` 里追加 `.route(...)`：
 
 ```java
-.watch(w -> w.table("ft_order").route("tenant_id", 100L))
+.observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
 ```
 
 `RouteScope` 负责 SQL 路由条件，不负责动态表名。
@@ -631,48 +633,21 @@ public class DynamicOrderEntity {
 }
 ```
 
-这里的 `bucket` 可以只存在于实体，不落数据库。
-
 ### 8.2 场景写法
 
 只切物理表，不加 SQL route：
 
 ```java
-.watch(w -> w.table("ft_mp_order_dynamic").dynamicTableBy("bucket", "a"))
+.observe(o -> o.table("ft_mp_order_dynamic", r -> r.dynamicTableBy("bucket", "a")))
 ```
 
 同时切物理表并带 SQL route：
 
 ```java
-.watch(w -> w.table("ft_mp_order_dynamic")
+.observe(o -> o.table("ft_mp_order_dynamic", r -> r
     .dynamicTableBy("bucket", "a")
-    .route("tenant_id", 100L))
+    .route("tenant_id", 100L)))
 ```
-
-### 8.3 Fixture-backed 动态表自动推导
-
-如果 fixture 实体使用了 `@JdbcDynamicTable`，并且 trait 设置了路由属性值，框架会自动推导 `TableRouteScope`。你不需要在 `watch` 里重复写 `.dynamicTableBy(...)`：
-
-```java
-FixtureHandle<DynamicOrderEntity> order = FixtureHandle.named(DynamicOrderEntity.class, "order");
-
-FlowTestV2.scenario("auto-derive-dynamic-table")
-    .given(g -> g.persist(order,
-        FixtureTrait.of(v -> v.setBucket("a")),  // 设置路由属性
-        FixtureTrait.of(v -> v.setStatus("CREATED"))))
-    .watch(w -> w.fixture(order))  // 自动推导 TableRouteScope
-    .when(() -> service.process(order))
-    .verify(ctx -> {
-        ctx.success();
-    })
-    .run();
-```
-
-前提：trait 必须设置动态表路由属性。如果路由属性为 null，框架会抛出明确错误提示。
-
-完整示例：
-
-- [FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
 
 ## 9. 多数据源
 
@@ -698,59 +673,28 @@ flowtest:
             - ft_account
 ```
 
-匹配顺序：
-
-1. 精确表名
-2. 通配符
-3. `default-name`
-4. 仍然无法匹配则报错
-
 ### 9.2 测试写法
 
 配置完之后，测试里不需要再写数据源名：
 
 ```java
-.watch(w -> w
-    .fixture(user)
-    .table("ft_mp_order_dynamic")
-        .dynamicTableBy("bucket", "a")
-        .route("tenant_id", 100L))
+.observe(o -> o.table("ft_mp_order_dynamic", r -> r
+    .dynamicTableBy("bucket", "a")
+    .route("tenant_id", 100L)))
+.when(...)
+.then(t -> t
+    .fixture(user, u -> u.after(v -> assertThat(v.getBalance()).isEqualTo(80L)))
+    .entity(TestUser.class, e -> e.modified(1))
+    .table("ft_mp_order_dynamic", order -> order.inserted(1)))
 ```
-
-完整示例：
-
-- [FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java)
-- [FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
 
 ## 10. Cleanup 策略
 
 默认策略是 `DELETE_INSERTED`。
 
-### 10.1 只有新增数据
-
-保持默认即可：
-
-```java
-.cleanup(CleanupPolicy.DELETE_INSERTED)
-```
-
-### 10.2 会修改或删除存量数据
-
-使用：
-
-```java
-.cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
-```
-
-### 10.3 什么时候不要用 `ROLLBACK`
-
-当前 JDBC 运行时没有内建事务边界，所以：
-
-```java
-.cleanup(CleanupPolicy.ROLLBACK)
-```
-
-只有在你自己已经提供外部事务边界时才成立。普通场景不要作为默认选项。
+- 只有新增数据：`DELETE_INSERTED`
+- 会修改/删除存量数据：`RESTORE_BEFORE_IMAGE`
+- `ROLLBACK` 只在你自己已经提供外部事务边界时才成立
 
 ## 11. 自动数据填充
 
@@ -767,115 +711,63 @@ flowtest:
 
 ## 12. Traits 怎么用
 
-`FixtureTrait` 用来描述差异化测试数据，不用写大而全的 builder。因为字段已经被自动填充，trait 只需要覆盖业务语义相关的字段。
+`FixtureTrait` 用来描述差异化测试数据。新版本提供多种创建方式：
+
+### 12.1 创建 Trait 的方式
+
+**单字段 setter（推荐）：**
 
 ```java
-private FixtureTrait<TestUser> tenantTrait(final Long tenantId) {
-    return FixtureTrait.of(v -> v.setTenantId(tenantId));
-}
-
-private FixtureTrait<TestUser> balanceTrait(final Long balance) {
-    return FixtureTrait.of(v -> v.setBalance(balance));
-}
+FixtureTrait.set(TestUser::setBalance, 100L)
 ```
 
-组合时：
+**简单 lambda：**
 
 ```java
-.given(g -> g.persist("user", TestUser.class,
-    idTrait(1L),
-    tenantTrait(100L),
-    balanceTrait(100L)))
+FixtureTrait.mutate(v -> v.setBalance(100L))
 ```
 
-建议把 trait 设计成业务语义：
-
-- `vip()`
-- `inTenant(100L)`
-- `balance(100L)`
-- `frozen()`
-
-不要把 trait 写成 JDBC 或 SQL 层面的操作。
-
-### 11.1 `fixture` 和 `trait` 的关系
-
-- `fixture`：这条前置数据本身
-- `alias`：这条前置数据在场景内的引用名
-- `trait`：把这条前置数据变成目标状态的规则
-
-可以这样理解：
-
-- `fixture` 是对象
-- `trait` 是对象的变形规则
-
-例如：
+**多字段 builder（推荐复杂场景）：**
 
 ```java
-.given(g -> g.persist("user", TestUser.class,
-    UserTraits.id(1L),
+FixtureTrait.draft(f -> f
+    .set(TestUser::setId, 1L)
+    .set(TestUser::setName, "Alice")
+    .set(TestUser::setBalance, 100L))
+```
+
+**组合多个 trait：**
+
+```java
+FixtureTrait.all(
     UserTraits.inTenant(100L),
-    UserTraits.balance(100L)))
+    UserTraits.balance(100L)
+)
 ```
 
-这里：
+> **注意**：`FixtureTrait.of(...)` 和 `FixtureTrait.compose(...)` 已标记为 `@Deprecated`，请分别使用 `mutate(...)` 和 `all(...)` 替代。
 
-- `"user"` 是这条 fixture 的 alias
-- `UserTraits.id(...)`、`UserTraits.inTenant(...)` 是 trait
-
-如果你在兼容旧代码，也仍然可以继续使用 `FixtureHandle`。
-
-### 11.2 不是只能写 `FixtureTrait.of(...)`
-
-`FixtureTrait.of(...)` 只是最轻量的写法，适合：
-
-- 临时样例
-- 一次性测试
-- 很简单的单字段赋值
-
-例如：
-
-```java
-FixtureTrait.of(v -> v.setTenantId(100L))
-```
-
-但业务测试里，不建议长期堆很多内联 lambda。
-
-### 11.3 推荐做法：按领域建立 Traits 类
-
-推荐把常用 trait 收敛到单独的 traits 类里，比如：
-
-- `UserTraits`
-- `OrderTraits`
-- `CouponTraits`
-
-示例：
+### 12.2 推荐做法：按领域建立 Traits 类
 
 ```java
 public final class UserTraits {
 
-    private UserTraits() {
-    }
-
     public static FixtureTrait<TestUser> id(final Long id) {
-        return FixtureTrait.of(v -> v.setId(id));
+        return FixtureTrait.set(TestUser::setId, id);
     }
 
     public static FixtureTrait<TestUser> inTenant(final Long tenantId) {
-        return FixtureTrait.of(v -> v.setTenantId(tenantId));
-    }
-
-    public static FixtureTrait<TestUser> named(final String name) {
-        return FixtureTrait.of(v -> v.setName(name));
+        return FixtureTrait.set(TestUser::setTenantId, tenantId);
     }
 
     public static FixtureTrait<TestUser> balance(final Long balance) {
-        return FixtureTrait.of(v -> v.setBalance(balance));
+        return FixtureTrait.set(TestUser::setBalance, balance);
     }
 
     public static FixtureTrait<TestUser> vipBuyer(final Long tenantId) {
-        return FixtureTrait.compose(
+        return FixtureTrait.all(
             inTenant(tenantId),
-            named("VIP_BUYER"),
+            FixtureTrait.set(TestUser::setName, "VIP_BUYER"),
             balance(1000L)
         );
     }
@@ -885,79 +777,12 @@ public final class UserTraits {
 使用时：
 
 ```java
-.given(g -> g.persist(user,
+.given(g -> g.fixture(user,
     UserTraits.id(1L),
     UserTraits.vipBuyer(100L)))
 ```
 
-这种写法比一串内联 `FixtureTrait.of(...)` 更适合长期维护。
-
-### 11.4 什么时候用静态 traits，什么时候写独立类
-
-适合用 `UserTraits.xxx(...)` 这类静态工厂方法的场景：
-
-- 只是简单设值
-- 只是组合已有 trait
-- 业务语义清晰
-- 你希望测试代码短而稳定
-
-适合单独实现一个 `FixtureTrait<T>` 类的场景：
-
-- trait 逻辑比较复杂
-- 需要参数校验
-- 需要读取其他 fixture
-- 需要封装领域规则而不是简单赋值
-
-例如：
-
-```java
-public final class VipBuyerTrait implements FixtureTrait<TestUser> {
-
-    private final Long tenantId;
-
-    public VipBuyerTrait(Long tenantId) {
-        this.tenantId = tenantId;
-    }
-
-    @Override
-    public void apply(TestUser target, TraitContext context) {
-        target.setTenantId(tenantId);
-        target.setName("VIP_BUYER");
-        target.setBalance(1000L);
-    }
-}
-```
-
-### 11.5 trait 之间可以组合
-
-`FixtureTrait` 本身支持组合：
-
-```java
-FixtureTrait<TestUser> vip = UserTraits.inTenant(100L)
-    .and(UserTraits.named("VIP_BUYER"))
-    .and(UserTraits.balance(1000L));
-```
-
-或者：
-
-```java
-FixtureTrait<TestUser> vip = FixtureTrait.compose(
-    UserTraits.inTenant(100L),
-    UserTraits.named("VIP_BUYER"),
-    UserTraits.balance(1000L)
-);
-```
-
-建议：
-
-- 原子 trait 负责单一职责
-- 场景 trait 负责组合原子 trait
-
-### 11.6 fixture 之间有依赖时，用 `TraitContext`
-
-如果一个 fixture 依赖另一个 fixture，推荐通过 `TraitContext` 解析 alias。
-
-例如订单依赖用户：
+### 12.3 Fixture 之间有依赖时，用 `TraitContext`
 
 ```java
 public final class BelongsToUserTrait implements FixtureTrait<TestOrder> {
@@ -977,79 +802,59 @@ public final class BelongsToUserTrait implements FixtureTrait<TestOrder> {
 }
 ```
 
-这样 trait 就不只是“填字段”，而是可以表达 fixture 关系。
+### 12.4 FixtureBuilder — inline 构造
 
-如果你已经有旧的 `FixtureHandle` 风格 trait，`context.resolve(handle)` 仍然保留用于兼容。
+除了 trait，还可以使用 `FixtureBuilder` 做 inline 构造：
 
-### 11.7 最佳实践
+```java
+.given(g -> g.fixture("user", TestUser.class, f -> f
+    .set(TestUser::setId, 1L)
+    .set(TestUser::setName, "Alice")
+    .set(TestUser::setBalance, 100L)))
+```
 
-推荐遵守这几条：
+builder 和 trait 可以混合使用：
 
-1. 样例代码可以用 `FixtureTrait.of(...)`，业务测试尽量沉淀成领域化 `Traits` 类。
-2. 原子 trait 只做一件事，比如 `inTenant(...)`、`balance(...)`。
-3. 场景 trait 只组合业务语义，不要混入 JDBC、SQL、查询逻辑。
-4. trait 名称优先用业务词汇，不要用技术词汇。
-5. 复杂依赖关系通过 `TraitContext` 处理，不要在测试里手工串字段。
-6. 一个测试里如果开始反复出现 3 个以上相同 trait 组合，就应该抽成公共 trait。
+```java
+.given(g -> g.fixture("user", TestUser.class, f -> f
+    .apply(UserTraits.inTenant(100L))
+    .set(TestUser::setBalance, 100L)))
+```
 
 ## 13. 常见问题
 
-### 12.1 为什么必须写 `observe`
+### 13.1 什么时候需要写 `observe`
 
-因为 `v2` 是 observation-first 设计。框架只对你显式声明的资源做：
+只在这些情况需要：
 
-- baseline
-- diff
-- cleanup
+- 资源需要 route 条件（分库分表）
+- 资源需要动态表参数
+- 资源只在全局 `inspect(...)` 里访问，不在声明式断言中出现
 
-### 12.2 不写自定义 JDBC adapter 可以吗
+其他情况，`then(...)` 中引用的资源会自动被观测。
 
-普通单表场景可以。框架会根据注册的实体元数据自动生成默认 adapter。
+### 13.2 不写自定义 JDBC adapter 可以吗
 
-只有这些场景才建议自定义：
+普通单表场景可以。只有这些场景才建议自定义：多表写入、非标准主键、特殊 JDBC 类型。
 
-- 多表写入
-- 非标准主键
-- 特殊 JDBC 类型
-- 特殊 reload / delete 逻辑
+### 13.3 MyBatis-Plus 还要写 `@JdbcEntity` 吗
 
-### 12.3 MyBatis-Plus 还要写 `@JdbcEntity` 吗
-
-常规场景不需要。
-
-如果你要动态表名，仍然需要 FlowTest 自己的：
-
-```java
-@JdbcDynamicTable(property = "bucket")
-```
-
-### 12.4 动态表字段必须是数据库列吗
-
-不必须。它可以只存在于实体，例如：
-
-```java
-@TableField(exist = false)
-private String bucket;
-```
+常规场景不需要。动态表名仍然需要 `@JdbcDynamicTable(property = "bucket")`。
 
 ## 14. 示例索引
 
 建议直接从这些测试文件抄起：
 
-- Spring Boot + TestNG 最小接入：
-  - [FlowTestV2SpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
-- Spring Boot + TestNG + 多数据源：
-  - [FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java)
-- Spring Boot + TestNG + MyBatis-Plus + 动态表：
-  - [FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
-- Spring Boot + TestNG + MyBatis-Plus + 动态表 + 多数据源：
-  - [FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
-- Spring Boot + TestNG + 单表 fixture + 分库分表动态表参考：
-  - [FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest.java)
-- Spring Boot + TestNG + 单表 fixture + 分库分表动态实体参考：
-  - [FlowTestV2ShardedDynamicEntityReferenceSpringBootTestNgExampleTest.java](/Users/zhangcheng/CodeProjects/flowtest/flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicEntityReferenceSpringBootTestNgExampleTest.java)
+- Spring Boot + TestNG 最小接入：[FlowTestV2SpringBootTestNgExampleTest.java](../flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SpringBootTestNgExampleTest.java)
+- Spring Boot + TestNG 简化写法：[FlowTestV2SimpleSpringBootTest.java](../flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2SimpleSpringBootTest.java)
+- Spring Boot + TestNG + 多数据源：[FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java](../flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MultiDataSourceSpringBootTestNgExampleTest.java)
+- Spring Boot + TestNG + MyBatis-Plus + 动态表：[FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java](../flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableSpringBootTestNgExampleTest.java)
+- Spring Boot + TestNG + MyBatis-Plus + 动态表 + 多数据源：[FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java](../flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2MybatisPlusDynamicTableMultiDataSourceSpringBootTestNgExampleTest.java)
+- Spring Boot + TestNG + 分库分表动态表参考：[FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest.java](../flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest.java)
+- Spring Boot + TestNG + 分库分表动态实体参考：[FlowTestV2ShardedDynamicEntityReferenceSpringBootTestNgExampleTest.java](../flowtest-v2-testng/src/test/java/com/github/sailfishc/flowtest/v2/testng/springboot/FlowTestV2ShardedDynamicEntityReferenceSpringBootTestNgExampleTest.java)
+- Spring Boot + JUnit 5 简化写法：[FlowTestV2SimpleSpringBootTest.java](../flowtest-v2-junit5/src/test/java/com/github/sailfishc/flowtest/v2/junit5/FlowTestV2SimpleSpringBootTest.java)
 
 ## 15. 下一步阅读
 
-- 架构说明：[flowtest-v2-architecture.md](/Users/zhangcheng/CodeProjects/flowtest/docs/flowtest-v2-architecture.md)
-- 按集成方式查细节：[flowtest-v2-integrations.md](/Users/zhangcheng/CodeProjects/flowtest/docs/flowtest-v2-integrations.md)
+- 架构说明：[flowtest-v2-architecture.md](flowtest-v2-architecture.md)
+- 按集成方式查细节：[flowtest-v2-integrations.md](flowtest-v2-integrations.md)

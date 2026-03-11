@@ -31,10 +31,10 @@ public class FlowTestV2ListenerTest implements ScenarioExecutorProvider {
         assertThat(FlowTestV2Listener.currentExecutor()).isSameAs(executor);
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("testng")
-            .watch(w -> w.table("orders"))
+            .observe(o -> o.table("orders"))
             .cleanup(CleanupPolicy.DELETE_INSERTED)
             .when(() -> "ok")
-            .then(t -> t.expectNoException())
+            .then(t -> t.success())
             .run();
 
         assertThat(result.getResult()).isEqualTo("ok");

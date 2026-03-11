@@ -84,32 +84,33 @@ public class FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest
         FixtureHandle<UserProfile> user = FixtureHandle.named(UserProfile.class, "user");
 
         FlowTestV2.scenario("spring-boot-testng-single-table-fixture-and-sharded-dynamic-table")
-            .given(g -> g.persist(user,
+            .given(g -> g.fixture(user,
                 idTrait(1L),
                 tenantTrait(100L),
                 nameTrait("Alice"),
                 levelTrait("VIP")))
-            .watch(w -> w
-                .fixture(user)
-                .table("ft_trade_order")
-                    .dynamicTableBy("bucket", "a")
-                    .route("tenant_id", 100L))
+            .observe(o -> o.table("ft_trade_order", r -> r
+                .dynamicTableBy("bucket", "a")
+                .route("tenant_id", 100L)))
             .when(() -> tradeOrderService.createTradeOrder("a", 100L, 1L, 901L))
-            .verify(ctx -> {
-                ctx.success();
-                assertThat(ctx.result()).isEqualTo(901L);
-
-                assertThat(ctx.fixture(user).before().getName()).isEqualTo("Alice");
-                assertThat(ctx.fixture(user).after().getName()).isEqualTo("Alice");
-                assertThat(ctx.fixture(user).after().getLevel()).isEqualTo("VIP");
-                assertThat(ctx.entity(UserProfile.class).modifiedCount()).isEqualTo(0L);
-
-                assertThat(ctx.table("ft_trade_order").insertedCount()).isEqualTo(1L);
-                assertThat(ctx.table("ft_trade_order").insertedOne().getColumn("id")).isEqualTo(901L);
-                assertThat(ctx.table("ft_trade_order").insertedOne().getColumn("tenant_id")).isEqualTo(100L);
-                assertThat(ctx.table("ft_trade_order").insertedOne().getColumn("user_id")).isEqualTo(1L);
-                assertThat(ctx.table("ft_trade_order").insertedOne().getColumn("status")).isEqualTo("CREATED");
-            })
+            .then(t -> t
+                .success()
+                .returns(901L)
+                .fixture(user, u -> u
+                    .before(v -> assertThat(v.getName()).isEqualTo("Alice"))
+                    .after(v -> {
+                        assertThat(v.getName()).isEqualTo("Alice");
+                        assertThat(v.getLevel()).isEqualTo("VIP");
+                    }))
+                .entity(UserProfile.class, e -> e.modified(0))
+                .table("ft_trade_order", order -> order
+                    .inserted(1)
+                    .inspect(ctx -> {
+                        assertThat(ctx.insertedOne().getColumn("id")).isEqualTo(901L);
+                        assertThat(ctx.insertedOne().getColumn("tenant_id")).isEqualTo(100L);
+                        assertThat(ctx.insertedOne().getColumn("user_id")).isEqualTo(1L);
+                        assertThat(ctx.insertedOne().getColumn("status")).isEqualTo("CREATED");
+                    })))
             .run();
 
         assertThat(queryForLong(accountJdbcTemplate, "select count(*) from ft_user_profile")).isEqualTo(0L);
@@ -123,19 +124,19 @@ public class FlowTestV2ShardedDynamicTableReferenceSpringBootTestNgExampleTest
     }
 
     private FixtureTrait<UserProfile> idTrait(final Long id) {
-        return FixtureTrait.of(user -> user.setId(id));
+        return FixtureTrait.mutate(user -> user.setId(id));
     }
 
     private FixtureTrait<UserProfile> tenantTrait(final Long tenantId) {
-        return FixtureTrait.of(user -> user.setTenantId(tenantId));
+        return FixtureTrait.mutate(user -> user.setTenantId(tenantId));
     }
 
     private FixtureTrait<UserProfile> nameTrait(final String name) {
-        return FixtureTrait.of(user -> user.setName(name));
+        return FixtureTrait.mutate(user -> user.setName(name));
     }
 
     private FixtureTrait<UserProfile> levelTrait(final String level) {
-        return FixtureTrait.of(user -> user.setLevel(level));
+        return FixtureTrait.mutate(user -> user.setLevel(level));
     }
 
     @SpringBootConfiguration

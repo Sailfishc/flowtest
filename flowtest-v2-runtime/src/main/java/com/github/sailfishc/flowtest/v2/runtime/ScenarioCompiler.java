@@ -29,9 +29,8 @@ public final class ScenarioCompiler {
 
     private <R> ValidationResult<R> validate(ScenarioDefinition<R> definition) {
         List<String> issues = new ArrayList<String>();
-        if (definition.getObservations().isEmpty()) {
-            issues.add("At least one observed resource must be declared");
-        }
+        // Observations can be empty if the scenario only tests result/fixture
+        // (auto-inferred observations are already merged into the definition by the builder)
 
         Set<FixtureHandle<?>> handles = new LinkedHashSet<FixtureHandle<?>>();
         Map<String, FixtureHandle<?>> handlesByAlias = new LinkedHashMap<String, FixtureHandle<?>>();

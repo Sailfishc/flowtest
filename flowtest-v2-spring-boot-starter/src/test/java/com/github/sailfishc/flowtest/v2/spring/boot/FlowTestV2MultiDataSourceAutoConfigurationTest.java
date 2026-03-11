@@ -60,7 +60,7 @@ class FlowTestV2MultiDataSourceAutoConfigurationTest {
         FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("spring-boot-multi-datasource")
-            .given(g -> g.persist(user,
+            .given(g -> g.fixture(user,
                 trait(new TraitSetter() {
                     @Override
                     public void apply(TestUser user) {
@@ -85,17 +85,17 @@ class FlowTestV2MultiDataSourceAutoConfigurationTest {
                         user.setBalance(100L);
                     }
                 })))
-            .watch(w -> w
-                .fixture(user)
-                .table("ft_order").route("tenant_id", 100L))
+            .observe(o -> o
+                .table("ft_order", r -> r.route("tenant_id", 100L)))
             .when(() -> {
                 executeSql(accountDataSource, "update ft_user set balance = 80 where id = 1");
                 executeSql(orderDataSource, "insert into ft_order(id, tenant_id, user_id, status) values (10, 100, 1, 'CREATED')");
                 return "ok";
             })
-            .then(t -> t.expectNoException()
-                .modified(TestUser.class.getName(), 1)
-                .inserted("ft_order", 1))
+            .then(t -> t
+                .success()
+                .entity(TestUser.class, e -> e.modified(1))
+                .table("ft_order", order -> order.inserted(1)))
             .execute(scenarioExecutor);
 
         assertThat(result.getResult()).isEqualTo("ok");
@@ -104,7 +104,7 @@ class FlowTestV2MultiDataSourceAutoConfigurationTest {
     }
 
     private FixtureTrait<TestUser> trait(final TraitSetter setter) {
-        return FixtureTrait.of(new java.util.function.Consumer<TestUser>() {
+        return FixtureTrait.mutate(new java.util.function.Consumer<TestUser>() {
             @Override
             public void accept(TestUser user) {
                 setter.apply(user);

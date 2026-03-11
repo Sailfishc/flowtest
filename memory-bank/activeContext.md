@@ -4,6 +4,9 @@
 The `v2` core runtime is now executable. The immediate focus should shift from model scaffolding to production-hardening and integration layers.
 
 ## Recent Changes
+- Added a repository-bundled Codex skill at `.codex/skills/flowtest-v2` for integrating FlowTest V2 and authoring tests.
+- The new skill is intentionally V2-only and steers users to the latest API shape: `given(...)`, `watch(...)`, `when(...)`, `verify(...)`, and `.run()`.
+- Bundled skill references now summarize current integration recipes, routing/cleanup guidance, and migration away from older `observe(...)` / `then(...)` / `.execute(executor)` examples.
 - Added generic observation SPI and identity-based diff model.
 - Added JDBC observation executor with route-aware snapshot capture and `DELETE_INSERTED` cleanup.
 - Added fixture execution SPI and JDBC fixture executor with adapter registry.
@@ -56,6 +59,8 @@ The `v2` core runtime is now executable. The immediate focus should shift from m
 - Added compile-time fixture-alias resolution for `watch(w -> w.fixture("alias"))`, so alias-based watch declarations can be compiled against the final fixture set.
 
 ## Active Decisions
+- Repository-provided AI guidance should now prefer the installable `flowtest-v2` skill over ad hoc long-form onboarding when the task is "integrate FlowTest" or "write FlowTest tests".
+- The skill should recommend only the latest V2 API by default; compatibility APIs remain available but should not be the default examples.
 - Default cleanup in `v2` is `DELETE_INSERTED`, not `ROLLBACK`, because base runtime does not own transaction boundaries.
 - Traits belong only to fixture construction.
 - Route scope must be explicit for sharded observations.

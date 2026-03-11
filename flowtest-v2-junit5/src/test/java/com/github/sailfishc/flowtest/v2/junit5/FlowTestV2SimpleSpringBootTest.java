@@ -64,21 +64,17 @@ class FlowTestV2SimpleSpringBootTest {
         FixtureHandle<SimpleOrder> order = FixtureHandle.named(SimpleOrder.class, "order");
 
         ScenarioExecutionResult<Long> result = FlowTestV2.scenario("create-order")
-            .given(g -> g.persist(order,
+            .given(g -> g.fixture(order,
                 idTrait(1L),
                 productTrait("iPhone"),
                 quantityTrait(2),
                 totalPriceTrait(2000L)))
-            .watch(w -> w
-                .fixture(order)
-                .table("simple_order"))
             .when(() -> orderService.applyDiscount(1L, 10)) // 10% discount
-            .verify(ctx -> {
-                ctx.success();
-                assertThat(ctx.result()).isEqualTo(1800L); // 2000 * 0.9
-                assertThat(ctx.fixture(order).after().getTotalPrice()).isEqualTo(1800L);
-                assertThat(ctx.table("simple_order").modifiedCount()).isEqualTo(1L);
-            })
+            .then(t -> t
+                .success()
+                .returns(1800L)
+                .fixture(order, o -> o.after(v -> assertThat(v.getTotalPrice()).isEqualTo(1800L)))
+                .table("simple_order", tbl -> tbl.modified(1)))
             .run();
 
         assertThat(result.getResult()).isEqualTo(1800L);
@@ -89,39 +85,37 @@ class FlowTestV2SimpleSpringBootTest {
         FixtureHandle<SimpleOrder> order = FixtureHandle.named(SimpleOrder.class, "order");
 
         FlowTestV2.scenario("cancel-order")
-            .given(g -> g.persist(order,
+            .given(g -> g.fixture(order,
                 idTrait(1L),
                 productTrait("MacBook"),
                 quantityTrait(1),
                 totalPriceTrait(10000L)))
-            .watch(w -> w.table("simple_order"))
             .when(() -> {
                 orderService.cancelOrder(1L);
                 return null;
             })
-            .verify(ctx -> {
-                ctx.success();
-                assertThat(ctx.table("simple_order").deletedCount()).isEqualTo(1L);
-            })
+            .then(t -> t
+                .success()
+                .table("simple_order", tbl -> tbl.deleted(1)))
             .run();
 
         assertThat(countOrders()).isEqualTo(0L);
     }
 
     private FixtureTrait<SimpleOrder> idTrait(final Long id) {
-        return FixtureTrait.of(order -> order.setId(id));
+        return FixtureTrait.mutate(order -> order.setId(id));
     }
 
     private FixtureTrait<SimpleOrder> productTrait(final String productName) {
-        return FixtureTrait.of(order -> order.setProductName(productName));
+        return FixtureTrait.mutate(order -> order.setProductName(productName));
     }
 
     private FixtureTrait<SimpleOrder> quantityTrait(final Integer quantity) {
-        return FixtureTrait.of(order -> order.setQuantity(quantity));
+        return FixtureTrait.mutate(order -> order.setQuantity(quantity));
     }
 
     private FixtureTrait<SimpleOrder> totalPriceTrait(final Long totalPrice) {
-        return FixtureTrait.of(order -> order.setTotalPrice(totalPrice));
+        return FixtureTrait.mutate(order -> order.setTotalPrice(totalPrice));
     }
 
     private long countOrders() {

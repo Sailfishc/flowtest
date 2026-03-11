@@ -24,10 +24,10 @@ class FlowTestV2ExtensionProviderTest implements ScenarioExecutorProvider {
     @Test
     void shouldResolveExecutorFromProvider(ScenarioExecutor executor) throws Exception {
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("junit5-provider")
-            .watch(w -> w.table("orders"))
+            .observe(o -> o.table("orders"))
             .cleanup(CleanupPolicy.DELETE_INSERTED)
             .when(() -> "done")
-            .then(t -> t.expectNoException())
+            .then(t -> t.success())
             .run();
 
         assertThat(result.getResult()).isEqualTo("done");

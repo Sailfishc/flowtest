@@ -62,26 +62,23 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
         FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
 
         FlowTestV2.scenario("spring-boot-testng-multi-datasource")
-            .given(g -> g.persist(user,
+            .given(g -> g.fixture(user,
                 idTrait(1L),
                 tenantTrait(100L),
                 nameTrait("Alice"),
                 balanceTrait(100L)))
-            .watch(w -> w
-                .fixture(user)
-                .table("ft_order").route("tenant_id", 100L))
+            .observe(o -> o.table("ft_order", r -> r.route("tenant_id", 100L)))
             .when(() -> {
                 executeSql(accountDataSource, "update ft_user set balance = 80 where id = 1");
                 executeSql(orderDataSource, "insert into ft_order(id, tenant_id, user_id, status) values (10, 100, 1, 'CREATED')");
                 return 10L;
             })
-            .verify(ctx -> {
-                ctx.success();
-                assertThat(ctx.result()).isEqualTo(10L);
-                assertThat(ctx.fixture(user).after().getBalance()).isEqualTo(80L);
-                assertThat(ctx.entity(TestUser.class).modifiedCount()).isEqualTo(1L);
-                assertThat(ctx.table("ft_order").insertedCount()).isEqualTo(1L);
-            })
+            .then(t -> t
+                .success()
+                .returns(10L)
+                .fixture(user, u -> u.after(v -> assertThat(v.getBalance()).isEqualTo(80L)))
+                .entity(TestUser.class, e -> e.modified(1))
+                .table("ft_order", order -> order.inserted(1)))
             .run();
 
         assertThat(queryForLong(accountDataSource, "select count(*) from ft_user")).isEqualTo(0L);
@@ -89,7 +86,7 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
     }
 
     private FixtureTrait<TestUser> idTrait(final Long id) {
-        return FixtureTrait.of(new java.util.function.Consumer<TestUser>() {
+        return FixtureTrait.mutate(new java.util.function.Consumer<TestUser>() {
             @Override
             public void accept(TestUser user) {
                 user.setId(id);
@@ -98,7 +95,7 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
     }
 
     private FixtureTrait<TestUser> tenantTrait(final Long tenantId) {
-        return FixtureTrait.of(new java.util.function.Consumer<TestUser>() {
+        return FixtureTrait.mutate(new java.util.function.Consumer<TestUser>() {
             @Override
             public void accept(TestUser user) {
                 user.setTenantId(tenantId);
@@ -107,7 +104,7 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
     }
 
     private FixtureTrait<TestUser> nameTrait(final String name) {
-        return FixtureTrait.of(new java.util.function.Consumer<TestUser>() {
+        return FixtureTrait.mutate(new java.util.function.Consumer<TestUser>() {
             @Override
             public void accept(TestUser user) {
                 user.setName(name);
@@ -116,7 +113,7 @@ public class FlowTestV2MultiDataSourceSpringBootTestNgExampleTest extends Abstra
     }
 
     private FixtureTrait<TestUser> balanceTrait(final Long balance) {
-        return FixtureTrait.of(new java.util.function.Consumer<TestUser>() {
+        return FixtureTrait.mutate(new java.util.function.Consumer<TestUser>() {
             @Override
             public void accept(TestUser user) {
                 user.setBalance(balance);

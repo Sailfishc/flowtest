@@ -15,6 +15,7 @@ import com.github.sailfishc.flowtest.v2.assertion.RowAssertion;
 import com.github.sailfishc.flowtest.v2.assertion.RowListAssertions;
 import com.github.sailfishc.flowtest.v2.assertion.RowListSpec;
 import com.github.sailfishc.flowtest.v2.spec.CleanupPolicy;
+import com.github.sailfishc.flowtest.v2.spec.FixtureBuilder;
 import com.github.sailfishc.flowtest.v2.spec.FixtureHandle;
 import com.github.sailfishc.flowtest.v2.spec.FixtureSpec;
 import com.github.sailfishc.flowtest.v2.spec.FixtureTrait;
@@ -25,7 +26,9 @@ import com.github.sailfishc.flowtest.v2.spec.TableRouteScope;
 import com.github.sailfishc.flowtest.v2.spec.ThrowingSupplier;
 
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -35,7 +38,7 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
 
     private final String name;
     private final List<FixtureSpec<?>> fixtures = new ArrayList<FixtureSpec<?>>();
-    private final List<ObservationSpec> observations = new ArrayList<ObservationSpec>();
+    private final List<ObservationSpec> explicitObservations = new ArrayList<ObservationSpec>();
     private CleanupPolicy cleanupPolicy = CleanupPolicy.DELETE_INSERTED;
 
     public DefaultScenarioBuilder(String name) {
@@ -49,8 +52,8 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
     }
 
     @Override
-    public ScenarioBuilder watch(Consumer<WatchSpec> watch) {
-        watch.accept(new DefaultWatchSpec(observations));
+    public ScenarioBuilder observe(Consumer<ObserveSpec> observe) {
+        observe.accept(new DefaultObserveSpec(explicitObservations));
         return this;
     }
 
@@ -62,8 +65,10 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
 
     @Override
     public <R> ScenarioPlan<R> when(ThrowingSupplier<R> action) {
-        return new DefaultScenarioPlan<R>(name, fixtures, observations, cleanupPolicy, action);
+        return new DefaultScenarioPlan<R>(name, fixtures, explicitObservations, cleanupPolicy, action);
     }
+
+    // ========== GivenSpec ==========
 
     private static final class DefaultGivenSpec implements GivenSpec {
 
@@ -74,25 +79,46 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         }
 
         @Override
-        public <T> FixtureHandle<T> persist(Class<T> entityType, FixtureTrait<? super T>... traits) {
+        public <T> FixtureHandle<T> fixture(Class<T> entityType, FixtureTrait<? super T>... traits) {
             FixtureHandle<T> handle = FixtureHandle.anonymous(entityType);
-            persist(handle, traits);
+            fixture(handle, traits);
             return handle;
         }
 
         @Override
-        public <T> GivenSpec persist(String alias, Class<T> entityType, FixtureTrait<? super T>... traits) {
-            return persist(FixtureHandle.named(entityType, alias), traits);
+        public <T> GivenSpec fixture(String alias, Class<T> entityType, FixtureTrait<? super T>... traits) {
+            return fixture(FixtureHandle.named(entityType, alias), traits);
         }
 
         @Override
-        public <T> GivenSpec persist(FixtureHandle<T> handle, FixtureTrait<? super T>... traits) {
+        public <T> GivenSpec fixture(FixtureHandle<T> handle, FixtureTrait<? super T>... traits) {
             fixtures.add(new FixtureSpec<T>(handle, handle.getType(), asList(traits)));
             return this;
         }
 
         @Override
-        public <T> GivenSpec persistRows(Class<T> entityType, Consumer<RowSetSpec<T>> rows) {
+        public <T> FixtureHandle<T> fixture(Class<T> entityType, Consumer<FixtureBuilder<T>> builder) {
+            FixtureHandle<T> handle = FixtureHandle.anonymous(entityType);
+            fixture(handle, builder);
+            return handle;
+        }
+
+        @Override
+        public <T> GivenSpec fixture(String alias, Class<T> entityType, Consumer<FixtureBuilder<T>> builder) {
+            return fixture(FixtureHandle.named(entityType, alias), builder);
+        }
+
+        @Override
+        public <T> GivenSpec fixture(FixtureHandle<T> handle, Consumer<FixtureBuilder<T>> builder) {
+            FixtureTrait<T> trait = builderToTrait(builder);
+            List<FixtureTrait<? super T>> traits = new ArrayList<FixtureTrait<? super T>>();
+            traits.add(trait);
+            fixtures.add(new FixtureSpec<T>(handle, handle.getType(), traits));
+            return this;
+        }
+
+        @Override
+        public <T> GivenSpec fixtures(Class<T> entityType, Consumer<RowSetSpec<T>> rows) {
             DefaultRowSetSpec<T> rowSet = new DefaultRowSetSpec<T>(fixtures, entityType);
             rows.accept(rowSet);
             return this;
@@ -108,6 +134,8 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
             return declaredTraits;
         }
     }
+
+    // ========== RowSetSpec ==========
 
     private static final class DefaultRowSetSpec<T> implements RowSetSpec<T> {
 
@@ -127,6 +155,12 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         }
 
         @Override
+        public RowSetSpec<T> defaults(Consumer<FixtureBuilder<T>> builder) {
+            defaultTraits.add(builderToTrait(builder));
+            return this;
+        }
+
+        @Override
         public RowSetSpec<T> row(FixtureTrait<? super T>... traits) {
             return row(FixtureHandle.anonymous(entityType), traits);
         }
@@ -136,9 +170,26 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
             return row(FixtureHandle.named(entityType, alias), traits);
         }
 
+        @Override
+        public RowSetSpec<T> row(Consumer<FixtureBuilder<T>> builder) {
+            return rowWithBuilder(FixtureHandle.anonymous(entityType), builder);
+        }
+
+        @Override
+        public RowSetSpec<T> row(String alias, Consumer<FixtureBuilder<T>> builder) {
+            return rowWithBuilder(FixtureHandle.named(entityType, alias), builder);
+        }
+
         private RowSetSpec<T> row(FixtureHandle<T> handle, FixtureTrait<? super T>... traits) {
             List<FixtureTrait<? super T>> declaredTraits = new ArrayList<FixtureTrait<? super T>>(defaultTraits);
             append(declaredTraits, traits);
+            fixtures.add(new FixtureSpec<T>(handle, entityType, declaredTraits));
+            return this;
+        }
+
+        private RowSetSpec<T> rowWithBuilder(FixtureHandle<T> handle, Consumer<FixtureBuilder<T>> builder) {
+            List<FixtureTrait<? super T>> declaredTraits = new ArrayList<FixtureTrait<? super T>>(defaultTraits);
+            declaredTraits.add(builderToTrait(builder));
             fixtures.add(new FixtureSpec<T>(handle, entityType, declaredTraits));
             return this;
         }
@@ -153,184 +204,138 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         }
     }
 
-    private static final class DefaultWatchSpec implements WatchSpec {
+    // ========== ObserveSpec ==========
+
+    private static final class DefaultObserveSpec implements ObserveSpec {
 
         private final List<ObservationSpec> observations;
 
-        private DefaultWatchSpec(List<ObservationSpec> observations) {
+        private DefaultObserveSpec(List<ObservationSpec> observations) {
             this.observations = observations;
         }
 
         @Override
-        public WatchSpec fixture(FixtureHandle<?> handle) {
-            observations.add(ObservationSpec.fixture(handle));
+        public ObserveSpec table(String tableName) {
+            observations.add(ObservationSpec.table(tableName, TableRouteScope.empty(), RouteScope.empty(), false));
             return this;
         }
 
         @Override
-        public WatchSpec fixture(String alias) {
-            observations.add(ObservationSpec.fixture(alias));
+        public ObserveSpec table(String tableName, Consumer<ObservedResourceSpec> spec) {
+            DefaultObservedResourceSpec resourceSpec = new DefaultObservedResourceSpec();
+            spec.accept(resourceSpec);
+            observations.add(ObservationSpec.table(tableName, resourceSpec.tableRouteScope, resourceSpec.routeScope,
+                resourceSpec.routeCalled));
             return this;
         }
 
         @Override
-        public WatchResourceSpec table(String tableName) {
-            ObservationSpec observation = ObservationSpec.table(tableName, TableRouteScope.empty(), RouteScope.empty(), false);
-            observations.add(observation);
-            return new DefaultWatchResourceSpec(observations, observations.size() - 1);
+        public ObserveSpec entity(Class<?> entityType) {
+            observations.add(ObservationSpec.entity(entityType, TableRouteScope.empty(), RouteScope.empty(), false));
+            return this;
         }
 
         @Override
-        public WatchResourceSpec entity(Class<?> entityType) {
-            ObservationSpec observation = ObservationSpec.entity(entityType, TableRouteScope.empty(), RouteScope.empty(), false);
-            observations.add(observation);
-            return new DefaultWatchResourceSpec(observations, observations.size() - 1);
+        public ObserveSpec entity(Class<?> entityType, Consumer<ObservedResourceSpec> spec) {
+            DefaultObservedResourceSpec resourceSpec = new DefaultObservedResourceSpec();
+            spec.accept(resourceSpec);
+            observations.add(ObservationSpec.entity(entityType, resourceSpec.tableRouteScope, resourceSpec.routeScope,
+                resourceSpec.routeCalled));
+            return this;
         }
     }
 
-    private static final class DefaultWatchResourceSpec implements WatchResourceSpec {
+    private static final class DefaultObservedResourceSpec implements ObservedResourceSpec {
 
-        private final List<ObservationSpec> observations;
-        private final int index;
-
-        private DefaultWatchResourceSpec(List<ObservationSpec> observations, int index) {
-            this.observations = observations;
-            this.index = index;
-        }
+        private TableRouteScope tableRouteScope = TableRouteScope.empty();
+        private RouteScope routeScope = RouteScope.empty();
+        private boolean routeCalled = false;
 
         @Override
-        public WatchSpec fixture(FixtureHandle<?> handle) {
-            return new DefaultWatchSpec(observations).fixture(handle);
-        }
-
-        @Override
-        public WatchSpec fixture(String alias) {
-            return new DefaultWatchSpec(observations).fixture(alias);
-        }
-
-        @Override
-        public WatchResourceSpec table(String tableName) {
-            return new DefaultWatchSpec(observations).table(tableName);
-        }
-
-        @Override
-        public WatchResourceSpec entity(Class<?> entityType) {
-            return new DefaultWatchSpec(observations).entity(entityType);
-        }
-
-        @Override
-        public WatchResourceSpec route(String columnName, Object value) {
+        public ObservedResourceSpec route(String columnName, Object value) {
             return route(RouteCondition.eq(columnName, value));
         }
 
         @Override
-        public WatchResourceSpec route(RouteCondition condition) {
-            ObservationSpec current = currentObservation();
-            return replace(current.getTableRouteScope(), current.getRouteScope().append(condition), true);
-        }
-
-        @Override
-        public WatchResourceSpec route(RouteScope routeScope) {
-            ObservationSpec current = currentObservation();
-            RouteScope merged = current.getRouteScope();
-            for (RouteCondition condition : routeScope.getConditions()) {
-                merged = merged.append(condition);
-            }
-            return replace(current.getTableRouteScope(), merged, true);
-        }
-
-        @Override
-        public WatchResourceSpec dynamicTableBy(String key, Object value) {
-            return tableBy(key, value);
-        }
-
-        @Override
-        public WatchResourceSpec dynamicTable(TableRouteScope tableRouteScope) {
-            return tableRoute(tableRouteScope);
-        }
-
-        @Override
-        public WatchResourceSpec tableBy(String key, Object value) {
-            ObservationSpec current = currentObservation();
-            return replace(current.getTableRouteScope().append(key, value), current.getRouteScope(), current.isRouteRequired());
-        }
-
-        @Override
-        public WatchResourceSpec tableRoute(TableRouteScope tableRouteScope) {
-            ObservationSpec current = currentObservation();
-            TableRouteScope merged = current.getTableRouteScope();
-            for (com.github.sailfishc.flowtest.v2.spec.TableRouteValue value : tableRouteScope.getValues()) {
-                merged = merged.append(value);
-            }
-            return replace(merged, current.getRouteScope(), current.isRouteRequired());
-        }
-
-        private ObservationSpec currentObservation() {
-            return observations.get(index);
-        }
-
-        private WatchResourceSpec replace(TableRouteScope tableRouteScope, RouteScope routeScope, boolean routeRequired) {
-            ObservationSpec current = currentObservation();
-            observations.set(index, recreate(current, tableRouteScope, routeScope, routeRequired));
+        public ObservedResourceSpec route(RouteCondition condition) {
+            this.routeCalled = true;
+            this.routeScope = this.routeScope.append(condition);
             return this;
         }
 
-        private ObservationSpec recreate(ObservationSpec base,
-                                         TableRouteScope tableRouteScope,
-                                         RouteScope routeScope,
-                                         boolean routeRequired) {
-            if (base.getResourceKind() == com.github.sailfishc.flowtest.v2.spec.ResourceKind.TABLE) {
-                return ObservationSpec.table(base.getResourceName(), tableRouteScope, routeScope, routeRequired);
+        @Override
+        public ObservedResourceSpec route(RouteScope routeScope) {
+            this.routeCalled = true;
+            for (RouteCondition condition : routeScope.getConditions()) {
+                this.routeScope = this.routeScope.append(condition);
             }
-            return ObservationSpec.entity(base.getResourceType(), tableRouteScope, routeScope, routeRequired);
+            return this;
+        }
+
+        @Override
+        public ObservedResourceSpec dynamicTableBy(String key, Object value) {
+            this.tableRouteScope = this.tableRouteScope.append(key, value);
+            return this;
+        }
+
+        @Override
+        public ObservedResourceSpec dynamicTable(TableRouteScope tableRouteScope) {
+            for (com.github.sailfishc.flowtest.v2.spec.TableRouteValue value : tableRouteScope.getValues()) {
+                this.tableRouteScope = this.tableRouteScope.append(value);
+            }
+            return this;
         }
     }
 
-    private static final class DefaultScenarioPlan<R> implements ScenarioPlan<R>, ThenSpec<R> {
+    // ========== ScenarioPlan + ThenSpec ==========
+
+    private static final class DefaultScenarioPlan<R> implements ScenarioPlan<R> {
 
         private final String name;
         private final List<FixtureSpec<?>> fixtures;
-        private final List<ObservationSpec> observations;
+        private final List<ObservationSpec> explicitObservations;
         private final CleanupPolicy cleanupPolicy;
         private final ThrowingSupplier<R> action;
         private final List<ResultAssertion<R>> resultAssertions = new ArrayList<ResultAssertion<R>>();
-        private final List<ScenarioVerification<R>> scenarioVerifications = new ArrayList<ScenarioVerification<R>>();
         private final List<ResourceChangeExpectation> changeExpectations = new ArrayList<ResourceChangeExpectation>();
         private final List<ResourceChangeAssertionExpectation> changeAssertionExpectations =
             new ArrayList<ResourceChangeAssertionExpectation>();
         private final List<FixtureStateExpectation<?>> fixtureExpectations = new ArrayList<FixtureStateExpectation<?>>();
         private final List<FixtureChangeExpectation<?>> fixtureChangeExpectations = new ArrayList<FixtureChangeExpectation<?>>();
+        private final List<ScenarioVerification<R>> scenarioVerifications = new ArrayList<ScenarioVerification<R>>();
+        // Track inferred observation resources from then(...)
+        private final Set<String> inferredTableResources = new LinkedHashSet<String>();
+        private final Set<Class<?>> inferredEntityResources = new LinkedHashSet<Class<?>>();
+        // Track fixture aliases referenced in then(...)
+        private final Set<String> inferredFixtureAliases = new LinkedHashSet<String>();
+        private final Set<FixtureHandle<?>> inferredFixtureHandles = new LinkedHashSet<FixtureHandle<?>>();
 
         private DefaultScenarioPlan(String name,
                                     List<FixtureSpec<?>> fixtures,
-                                    List<ObservationSpec> observations,
+                                    List<ObservationSpec> explicitObservations,
                                     CleanupPolicy cleanupPolicy,
                                     ThrowingSupplier<R> action) {
             this.name = name;
             this.fixtures = new ArrayList<FixtureSpec<?>>(fixtures);
-            this.observations = new ArrayList<ObservationSpec>(observations);
+            this.explicitObservations = new ArrayList<ObservationSpec>(explicitObservations);
             this.cleanupPolicy = cleanupPolicy;
             this.action = action;
         }
 
         @Override
         public ScenarioPlan<R> then(Consumer<ThenSpec<R>> then) {
-            then.accept(this);
-            return this;
-        }
-
-        @Override
-        public ScenarioPlan<R> verify(ScenarioVerification<R> verification) {
-            scenarioVerifications.add(verification);
+            DefaultThenSpec<R> thenSpec = new DefaultThenSpec<R>(this);
+            then.accept(thenSpec);
             return this;
         }
 
         @Override
         public ScenarioDefinition<R> definition() {
+            List<ObservationSpec> mergedObservations = mergeObservations();
             return new ScenarioDefinition<R>(
                 name,
                 fixtures,
-                observations,
+                mergedObservations,
                 cleanupPolicy,
                 action,
                 new ExpectationSet<R>(
@@ -359,9 +364,116 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
             return compile().execute(executor);
         }
 
+        /**
+         * Merge explicit observations with inferred observations from then(...).
+         * Inferred resources that already have explicit observation are not duplicated.
+         */
+        private List<ObservationSpec> mergeObservations() {
+            Set<String> explicitResourceNames = new LinkedHashSet<String>();
+            for (ObservationSpec obs : explicitObservations) {
+                explicitResourceNames.add(obs.getResourceName());
+            }
+
+            List<ObservationSpec> merged = new ArrayList<ObservationSpec>(explicitObservations);
+
+            // Infer table observations from then(...)
+            for (String tableName : inferredTableResources) {
+                if (!explicitResourceNames.contains(tableName)) {
+                    merged.add(ObservationSpec.table(tableName, TableRouteScope.empty(), RouteScope.empty(), false));
+                    explicitResourceNames.add(tableName);
+                }
+            }
+
+            // Infer entity observations from then(...)
+            for (Class<?> entityType : inferredEntityResources) {
+                if (!explicitResourceNames.contains(entityType.getName())) {
+                    merged.add(ObservationSpec.entity(entityType, TableRouteScope.empty(), RouteScope.empty(), false));
+                    explicitResourceNames.add(entityType.getName());
+                }
+            }
+
+            // Infer fixture observations from then(...)
+            for (FixtureHandle<?> handle : inferredFixtureHandles) {
+                if (!explicitResourceNames.contains(handle.getType().getName())) {
+                    merged.add(ObservationSpec.fixture(handle));
+                    explicitResourceNames.add(handle.getType().getName());
+                }
+            }
+            for (String alias : inferredFixtureAliases) {
+                boolean alreadyPresent = false;
+                for (ObservationSpec obs : merged) {
+                    if (alias.equals(obs.getFixtureAlias())
+                        || (obs.getFixtureHandle() != null && alias.equals(obs.getFixtureHandle().getName()))) {
+                        alreadyPresent = true;
+                        break;
+                    }
+                }
+                if (!alreadyPresent) {
+                    merged.add(ObservationSpec.fixture(alias));
+                }
+            }
+
+            return merged;
+        }
+
+        // --- Tracking for inferred observations ---
+
+        void trackTable(String tableName) {
+            inferredTableResources.add(tableName);
+        }
+
+        void trackEntity(Class<?> entityType) {
+            inferredEntityResources.add(entityType);
+        }
+
+        void trackFixtureHandle(FixtureHandle<?> handle) {
+            inferredFixtureHandles.add(handle);
+        }
+
+        void trackFixtureAlias(String alias) {
+            inferredFixtureAliases.add(alias);
+        }
+
+        // --- Expectation registration ---
+
+        void addResultAssertion(ResultAssertion<R> assertion) {
+            resultAssertions.add(assertion);
+        }
+
+        void addChangeExpectation(ResourceChangeExpectation expectation) {
+            changeExpectations.add(expectation);
+        }
+
+        void addChangeAssertionExpectation(ResourceChangeAssertionExpectation expectation) {
+            changeAssertionExpectations.add(expectation);
+        }
+
+        <T> void addFixtureExpectation(FixtureStateExpectation<T> expectation) {
+            fixtureExpectations.add(expectation);
+        }
+
+        <T> void addFixtureChangeExpectation(FixtureChangeExpectation<T> expectation) {
+            fixtureChangeExpectations.add(expectation);
+        }
+
+        void addVerification(ScenarioVerification<R> verification) {
+            scenarioVerifications.add(verification);
+        }
+    }
+
+    // ========== ThenSpec ==========
+
+    private static final class DefaultThenSpec<R> implements ThenSpec<R> {
+
+        private final DefaultScenarioPlan<R> plan;
+
+        DefaultThenSpec(DefaultScenarioPlan<R> plan) {
+            this.plan = plan;
+        }
+
         @Override
-        public ThenSpec<R> expectNoException() {
-            resultAssertions.add(new ResultAssertion<R>() {
+        public ThenSpec<R> success() {
+            plan.addResultAssertion(new ResultAssertion<R>() {
                 @Override
                 public void verify(R result, Throwable failure) {
                     if (failure != null) {
@@ -373,8 +485,8 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         }
 
         @Override
-        public ThenSpec<R> expectException(final Class<? extends Throwable> exceptionType) {
-            resultAssertions.add(new ResultAssertion<R>() {
+        public ThenSpec<R> failure(final Class<? extends Throwable> exceptionType) {
+            plan.addResultAssertion(new ResultAssertion<R>() {
                 @Override
                 public void verify(R result, Throwable failure) {
                     if (failure == null) {
@@ -390,95 +502,217 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         }
 
         @Override
-        public ThenSpec<R> outcome(ResultAssertion<R> assertion) {
-            resultAssertions.add(assertion);
-            return this;
-        }
-
-        @Override
-        public ThenSpec<R> inserted(String resourceName, long count) {
-            changeExpectations.add(new ResourceChangeExpectation(resourceName, count, null, null));
-            return this;
-        }
-
-        @Override
-        public ThenSpec<R> deleted(String resourceName, long count) {
-            changeExpectations.add(new ResourceChangeExpectation(resourceName, null, count, null));
-            return this;
-        }
-
-        @Override
-        public ThenSpec<R> modified(String resourceName, long count) {
-            changeExpectations.add(new ResourceChangeExpectation(resourceName, null, null, count));
-            return this;
-        }
-
-        @Override
-        public ThenSpec<R> change(String resourceName, ResourceChangeAssertion assertion) {
-            changeAssertionExpectations.add(new ResourceChangeAssertionExpectation(resourceName, assertion));
-            return this;
-        }
-
-        @Override
-        public ThenSpec<R> insertedRow(String resourceName, final RowAssertion assertion) {
-            return change(resourceName, new ResourceChangeAssertion() {
+        public ThenSpec<R> failureSatisfying(final Class<? extends Throwable> exceptionType,
+                                              final Consumer<? super Throwable> assertion) {
+            plan.addResultAssertion(new ResultAssertion<R>() {
                 @Override
-                public void verify(com.github.sailfishc.flowtest.v2.spec.ResourceChange change) {
-                    assertAnyInsertedRowMatches(change, assertion);
+                public void verify(R result, Throwable failure) {
+                    if (failure == null) {
+                        throw new AssertionError("Expected exception of type " + exceptionType.getName() + " but nothing was thrown");
+                    }
+                    if (!exceptionType.isInstance(failure)) {
+                        throw new AssertionError("Expected exception of type " + exceptionType.getName()
+                            + " but got " + failure.getClass().getName(), failure);
+                    }
+                    assertion.accept(failure);
                 }
             });
+            return this;
         }
 
         @Override
-        public ThenSpec<R> deletedRow(String resourceName, final RowAssertion assertion) {
-            return change(resourceName, new ResourceChangeAssertion() {
+        public ThenSpec<R> returns(final R expected) {
+            plan.addResultAssertion(new ResultAssertion<R>() {
                 @Override
-                public void verify(com.github.sailfishc.flowtest.v2.spec.ResourceChange change) {
-                    assertAnyDeletedRowMatches(change, assertion);
+                public void verify(R result, Throwable failure) {
+                    if (failure != null) {
+                        throw new AssertionError("Expected no exception but got " + failure.getClass().getName(), failure);
+                    }
+                    if (expected == null ? result != null : !expected.equals(result)) {
+                        throw new AssertionError("Expected result " + expected + " but was " + result);
+                    }
                 }
             });
+            return this;
         }
 
         @Override
-        public ThenSpec<R> modifiedRow(String resourceName, final ModifiedRowAssertion assertion) {
-            return change(resourceName, new ResourceChangeAssertion() {
+        public ThenSpec<R> returnsSatisfying(final ResultAssertion<? super R> assertion) {
+            plan.addResultAssertion(new ResultAssertion<R>() {
+                @Override
+                public void verify(R result, Throwable failure) {
+                    if (failure != null) {
+                        throw new AssertionError("Expected no exception but got " + failure.getClass().getName(), failure);
+                    }
+                    assertion.verify(result, failure);
+                }
+            });
+            return this;
+        }
+
+        @Override
+        public ThenSpec<R> table(String tableName, Consumer<ResourceExpectationSpec> spec) {
+            plan.trackTable(tableName);
+            DefaultResourceExpectationSpec resourceSpec = new DefaultResourceExpectationSpec<R>(plan, tableName);
+            spec.accept(resourceSpec);
+            return this;
+        }
+
+        @Override
+        public ThenSpec<R> entity(Class<?> entityType, Consumer<ResourceExpectationSpec> spec) {
+            plan.trackEntity(entityType);
+            DefaultResourceExpectationSpec resourceSpec = new DefaultResourceExpectationSpec<R>(plan, entityType.getName());
+            spec.accept(resourceSpec);
+            return this;
+        }
+
+        @Override
+        public <T> ThenSpec<R> fixture(FixtureHandle<T> handle, Consumer<FixtureExpectationSpec<T>> spec) {
+            plan.trackFixtureHandle(handle);
+            DefaultFixtureExpectationSpec<R, T> fixtureSpec = new DefaultFixtureExpectationSpec<R, T>(plan, handle);
+            spec.accept(fixtureSpec);
+            return this;
+        }
+
+        @Override
+        public <T> ThenSpec<R> fixture(String alias, Class<T> type, Consumer<FixtureExpectationSpec<T>> spec) {
+            plan.trackFixtureAlias(alias);
+            FixtureHandle<T> handle = FixtureHandle.named(type, alias);
+            DefaultFixtureExpectationSpec<R, T> fixtureSpec = new DefaultFixtureExpectationSpec<R, T>(plan, handle);
+            spec.accept(fixtureSpec);
+            return this;
+        }
+
+        @Override
+        public ThenSpec<R> inspect(final ScenarioInspection<R> inspection) {
+            plan.addVerification(new ScenarioVerification<R>() {
+                @Override
+                public void verify(VerifyContext<R> context) throws Exception {
+                    inspection.inspect(context);
+                }
+            });
+            return this;
+        }
+    }
+
+    // ========== ResourceExpectationSpec ==========
+
+    private static final class DefaultResourceExpectationSpec<R> implements ResourceExpectationSpec {
+
+        private final DefaultScenarioPlan<R> plan;
+        private final String resourceName;
+
+        DefaultResourceExpectationSpec(DefaultScenarioPlan<R> plan, String resourceName) {
+            this.plan = plan;
+            this.resourceName = resourceName;
+        }
+
+        @Override
+        public ResourceExpectationSpec inserted(long count) {
+            plan.addChangeExpectation(new ResourceChangeExpectation(resourceName, count, null, null));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec deleted(long count) {
+            plan.addChangeExpectation(new ResourceChangeExpectation(resourceName, null, count, null));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec modified(long count) {
+            plan.addChangeExpectation(new ResourceChangeExpectation(resourceName, null, null, count));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec insertedRow(final RowAssertion assertion) {
+            plan.addChangeAssertionExpectation(new ResourceChangeAssertionExpectation(resourceName, new ResourceChangeAssertion() {
+                @Override
+                public void verify(com.github.sailfishc.flowtest.v2.spec.ResourceChange change) {
+                    assertAnyRowMatches("inserted", change.getInsertedRows(), assertion);
+                }
+            }));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec deletedRow(final RowAssertion assertion) {
+            plan.addChangeAssertionExpectation(new ResourceChangeAssertionExpectation(resourceName, new ResourceChangeAssertion() {
+                @Override
+                public void verify(com.github.sailfishc.flowtest.v2.spec.ResourceChange change) {
+                    assertAnyRowMatches("deleted", change.getDeletedRows(), assertion);
+                }
+            }));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec modifiedRow(final ModifiedRowAssertion assertion) {
+            plan.addChangeAssertionExpectation(new ResourceChangeAssertionExpectation(resourceName, new ResourceChangeAssertion() {
                 @Override
                 public void verify(com.github.sailfishc.flowtest.v2.spec.ResourceChange change) {
                     assertAnyModifiedRowMatches(change, assertion);
                 }
+            }));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec insertedRows(Consumer<RowListSpec> spec) {
+            plan.addChangeAssertionExpectation(
+                new ResourceChangeAssertionExpectation(resourceName, RowListAssertions.insertedRows(spec)));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec deletedRows(Consumer<RowListSpec> spec) {
+            plan.addChangeAssertionExpectation(
+                new ResourceChangeAssertionExpectation(resourceName, RowListAssertions.deletedRows(spec)));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec modifiedRows(Consumer<ModifiedRowListSpec> spec) {
+            plan.addChangeAssertionExpectation(
+                new ResourceChangeAssertionExpectation(resourceName, RowListAssertions.modifiedRows(spec)));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec satisfies(ResourceChangeAssertion assertion) {
+            plan.addChangeAssertionExpectation(new ResourceChangeAssertionExpectation(resourceName, assertion));
+            return this;
+        }
+
+        @Override
+        public ResourceExpectationSpec inspect(final ResourceInspection inspection) {
+            plan.addVerification(new ScenarioVerification() {
+                @Override
+                public void verify(VerifyContext context) throws Exception {
+                    inspection.inspect(context.resource(resourceName));
+                }
             });
-        }
-
-        @Override
-        public <T> ThenSpec<R> fixture(FixtureHandle<T> handle, FixtureAssertion<T> assertion) {
-            fixtureExpectations.add(new FixtureStateExpectation<T>(handle, assertion));
             return this;
         }
 
-        @Override
-        public <T> ThenSpec<R> fixtureChange(FixtureHandle<T> handle, FixtureChangeAssertion<T> assertion) {
-            fixtureChangeExpectations.add(new FixtureChangeExpectation<T>(handle, assertion));
-            return this;
-        }
-
-        @Override
-        public TableChangeSpec<R> table(String tableName) {
-            return new DefaultTableChangeSpec<R>(this, tableName);
-        }
-
-        @Override
-        public TableChangeSpec<R> entity(Class<?> entityType) {
-            return new DefaultTableChangeSpec<R>(this, entityType.getName());
-        }
-
-        private void assertAnyInsertedRowMatches(com.github.sailfishc.flowtest.v2.spec.ResourceChange change,
-                                                 RowAssertion assertion) {
-            assertAnyRowMatches("inserted", change.getInsertedRows(), assertion);
-        }
-
-        private void assertAnyDeletedRowMatches(com.github.sailfishc.flowtest.v2.spec.ResourceChange change,
-                                                RowAssertion assertion) {
-            assertAnyRowMatches("deleted", change.getDeletedRows(), assertion);
+        private void assertAnyRowMatches(String rowType,
+                                         java.util.List<com.github.sailfishc.flowtest.v2.spec.RowSnapshot> rows,
+                                         RowAssertion assertion) {
+            AssertionError lastError = null;
+            for (com.github.sailfishc.flowtest.v2.spec.RowSnapshot row : rows) {
+                try {
+                    assertion.verify(row);
+                    return;
+                } catch (AssertionError ex) {
+                    lastError = ex;
+                }
+            }
+            String message = "No " + rowType + " row matched expectation";
+            if (lastError == null) {
+                throw new AssertionError(message);
+            }
+            throw new AssertionError(message + ": " + lastError.getMessage(), lastError);
         }
 
         private void assertAnyModifiedRowMatches(com.github.sailfishc.flowtest.v2.spec.ResourceChange change,
@@ -498,101 +732,82 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
             }
             throw new AssertionError(message + ": " + lastError.getMessage(), lastError);
         }
+    }
 
-        private void assertAnyRowMatches(String rowType,
-                                         List<com.github.sailfishc.flowtest.v2.spec.RowSnapshot> rows,
-                                         RowAssertion assertion) {
-            AssertionError lastError = null;
-            for (com.github.sailfishc.flowtest.v2.spec.RowSnapshot row : rows) {
-                try {
-                    assertion.verify(row);
-                    return;
-                } catch (AssertionError ex) {
-                    lastError = ex;
+    // ========== FixtureExpectationSpec ==========
+
+    private static final class DefaultFixtureExpectationSpec<R, T> implements FixtureExpectationSpec<T> {
+
+        private final DefaultScenarioPlan<R> plan;
+        private final FixtureHandle<T> handle;
+
+        DefaultFixtureExpectationSpec(DefaultScenarioPlan<R> plan, FixtureHandle<T> handle) {
+            this.plan = plan;
+            this.handle = handle;
+        }
+
+        @Override
+        public FixtureExpectationSpec<T> before(final FixtureAssertion<T> assertion) {
+            // before uses resolve (the materialized entity before action)
+            plan.addFixtureExpectation(new FixtureStateExpectation<T>(handle, new FixtureAssertion<T>() {
+                @Override
+                public void verify(T value) {
+                    // Note: FixtureStateExpectation reloads; for "before" we need a different path.
+                    // We'll use FixtureChangeExpectation to get access to both before and after.
+                    // This is handled by converting to a change expectation.
                 }
-            }
-            String message = "No " + rowType + " row matched expectation";
-            if (lastError == null) {
-                throw new AssertionError(message);
-            }
-            throw new AssertionError(message + ": " + lastError.getMessage(), lastError);
+            }));
+            // Actually, let's use fixtureChange to get before access
+            plan.fixtureExpectations.remove(plan.fixtureExpectations.size() - 1);
+            plan.addFixtureChangeExpectation(new FixtureChangeExpectation<T>(handle,
+                new FixtureChangeAssertion<T>() {
+                    @Override
+                    public void verify(T before, T after) {
+                        assertion.verify(before);
+                    }
+                }));
+            return this;
+        }
+
+        @Override
+        public FixtureExpectationSpec<T> after(FixtureAssertion<T> assertion) {
+            plan.addFixtureExpectation(new FixtureStateExpectation<T>(handle, assertion));
+            return this;
+        }
+
+        @Override
+        public FixtureExpectationSpec<T> change(FixtureChangeAssertion<T> assertion) {
+            plan.addFixtureChangeExpectation(new FixtureChangeExpectation<T>(handle, assertion));
+            return this;
+        }
+
+        @Override
+        public FixtureExpectationSpec<T> afterMatches(final FixtureStatePatch<T> patch) {
+            plan.addVerification(new ScenarioVerification() {
+                @Override
+                public void verify(VerifyContext context) throws Exception {
+                    ((FixtureVerifyContext<T>) context.fixture(handle)).matchesAfter(patch);
+                }
+            });
+            return this;
+        }
+
+        @Override
+        public FixtureExpectationSpec<T> inspect(final FixtureInspection<T> inspection) {
+            plan.addVerification(new ScenarioVerification() {
+                @Override
+                public void verify(VerifyContext context) throws Exception {
+                    inspection.inspect(context.fixture(handle));
+                }
+            });
+            return this;
         }
     }
 
-    /**
-     * Fluent child builder for table/entity-level expectations.
-     * Methods eagerly append expectations to the parent plan.
-     */
-    private static final class DefaultTableChangeSpec<R> implements TableChangeSpec<R> {
+    // ========== Utility ==========
 
-        private final DefaultScenarioPlan<R> parent;
-        private final String resourceName;
-
-        DefaultTableChangeSpec(DefaultScenarioPlan<R> parent, String resourceName) {
-            this.parent = parent;
-            this.resourceName = resourceName;
-        }
-
-        @Override
-        public TableChangeSpec<R> inserted(long count) {
-            parent.changeExpectations.add(new ResourceChangeExpectation(resourceName, count, null, null));
-            return this;
-        }
-
-        @Override
-        public TableChangeSpec<R> deleted(long count) {
-            parent.changeExpectations.add(new ResourceChangeExpectation(resourceName, null, count, null));
-            return this;
-        }
-
-        @Override
-        public TableChangeSpec<R> modified(long count) {
-            parent.changeExpectations.add(new ResourceChangeExpectation(resourceName, null, null, count));
-            return this;
-        }
-
-        @Override
-        public TableChangeSpec<R> insertedRow(RowAssertion assertion) {
-            parent.insertedRow(resourceName, assertion);
-            return this;
-        }
-
-        @Override
-        public TableChangeSpec<R> deletedRow(RowAssertion assertion) {
-            parent.deletedRow(resourceName, assertion);
-            return this;
-        }
-
-        @Override
-        public TableChangeSpec<R> modifiedRow(ModifiedRowAssertion assertion) {
-            parent.modifiedRow(resourceName, assertion);
-            return this;
-        }
-
-        @Override
-        public TableChangeSpec<R> insertedRows(Consumer<RowListSpec> spec) {
-            parent.changeAssertionExpectations.add(
-                new ResourceChangeAssertionExpectation(resourceName, RowListAssertions.insertedRows(spec)));
-            return this;
-        }
-
-        @Override
-        public TableChangeSpec<R> deletedRows(Consumer<RowListSpec> spec) {
-            parent.changeAssertionExpectations.add(
-                new ResourceChangeAssertionExpectation(resourceName, RowListAssertions.deletedRows(spec)));
-            return this;
-        }
-
-        @Override
-        public TableChangeSpec<R> modifiedRows(Consumer<ModifiedRowListSpec> spec) {
-            parent.changeAssertionExpectations.add(
-                new ResourceChangeAssertionExpectation(resourceName, RowListAssertions.modifiedRows(spec)));
-            return this;
-        }
-
-        @Override
-        public ThenSpec<R> and() {
-            return parent;
-        }
+    @SuppressWarnings("unchecked")
+    private static <T> FixtureTrait<T> builderToTrait(Consumer<FixtureBuilder<T>> builder) {
+        return FixtureTrait.draft(builder);
     }
 }

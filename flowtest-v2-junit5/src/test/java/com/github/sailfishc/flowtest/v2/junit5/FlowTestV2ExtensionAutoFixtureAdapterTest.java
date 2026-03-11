@@ -38,13 +38,14 @@ class FlowTestV2ExtensionAutoFixtureAdapterTest {
         FixtureHandle<TestUser> user = FixtureHandle.named(TestUser.class, "user");
 
         ScenarioExecutionResult<String> result = FlowTestV2.scenario("junit5-generic-fixture")
-            .given(g -> g.persist(user,
+            .given(g -> g.fixture(user,
                 idTrait(1L),
                 tenantTrait(100L),
                 nameTrait("Alice")))
-            .watch(w -> w.fixture(user))
             .when(() -> "ok")
-            .then(t -> t.expectNoException().fixture(user, value -> assertThat(value.getName()).isEqualTo("Alice")))
+            .then(t -> t
+                .success()
+                .fixture(user, u -> u.after(value -> assertThat(value.getName()).isEqualTo("Alice"))))
             .run();
 
         assertThat(result.getResult()).isEqualTo("ok");
@@ -53,15 +54,15 @@ class FlowTestV2ExtensionAutoFixtureAdapterTest {
     }
 
     private FixtureTrait<TestUser> idTrait(final Long id) {
-        return FixtureTrait.of(user -> user.setId(id));
+        return FixtureTrait.mutate(user -> user.setId(id));
     }
 
     private FixtureTrait<TestUser> tenantTrait(final Long tenantId) {
-        return FixtureTrait.of(user -> user.setTenantId(tenantId));
+        return FixtureTrait.mutate(user -> user.setTenantId(tenantId));
     }
 
     private FixtureTrait<TestUser> nameTrait(final String name) {
-        return FixtureTrait.of(user -> user.setName(name));
+        return FixtureTrait.mutate(user -> user.setName(name));
     }
 
     private static JdbcDataSource createDataSource() {
