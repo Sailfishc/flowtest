@@ -80,7 +80,7 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
 
         @Override
         public <T> FixtureHandle<T> fixture(Class<T> entityType, FixtureTrait<? super T>... traits) {
-            FixtureHandle<T> handle = FixtureHandle.anonymous(entityType);
+            FixtureHandle<T> handle = FixtureHandle.named(entityType, entityType.getSimpleName());
             fixture(handle, traits);
             return handle;
         }
@@ -98,7 +98,7 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
 
         @Override
         public <T> FixtureHandle<T> fixture(Class<T> entityType, Consumer<FixtureBuilder<T>> builder) {
-            FixtureHandle<T> handle = FixtureHandle.anonymous(entityType);
+            FixtureHandle<T> handle = FixtureHandle.named(entityType, entityType.getSimpleName());
             fixture(handle, builder);
             return handle;
         }
@@ -564,6 +564,11 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
             DefaultResourceExpectationSpec resourceSpec = new DefaultResourceExpectationSpec<R>(plan, entityType.getName());
             spec.accept(resourceSpec);
             return this;
+        }
+
+        @Override
+        public <T> ThenSpec<R> fixture(Class<T> type, Consumer<FixtureExpectationSpec<T>> spec) {
+            return fixture(type.getSimpleName(), type, spec);
         }
 
         @Override

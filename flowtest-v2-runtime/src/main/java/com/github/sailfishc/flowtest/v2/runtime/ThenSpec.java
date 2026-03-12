@@ -53,6 +53,17 @@ public interface ThenSpec<R> {
 
     // --- Fixture assertions (alias-first, auto-infers observation) ---
 
+    /**
+     * Fixture assertion by type. Uses {@code type.getSimpleName()} as the alias.
+     * Suitable when there is only one fixture per entity type.
+     *
+     * <pre>{@code
+     * .given(g -> g.fixture(User.class, withBalance(100L)))
+     * .then(t -> t.fixture(User.class, u -> u.after(v -> assertThat(v.getBalance()).isEqualTo(80L))))
+     * }</pre>
+     */
+    <T> ThenSpec<R> fixture(Class<T> type, Consumer<FixtureExpectationSpec<T>> spec);
+
     <T> ThenSpec<R> fixture(FixtureHandle<T> handle, Consumer<FixtureExpectationSpec<T>> spec);
 
     <T> ThenSpec<R> fixture(String alias, Class<T> type, Consumer<FixtureExpectationSpec<T>> spec);

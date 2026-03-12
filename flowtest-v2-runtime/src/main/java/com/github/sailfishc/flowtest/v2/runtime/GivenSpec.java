@@ -13,6 +13,17 @@ public interface GivenSpec {
 
     // --- Trait-based (reusable traits) ---
 
+    /**
+     * Declares a fixture using {@code entityType.getSimpleName()} as the default alias.
+     * Suitable when there is only one fixture per entity type.
+     *
+     * <pre>{@code
+     * .given(g -> g.fixture(User.class, withBalance(100L)))
+     * .then(t -> t.fixture(User.class, u -> u.after(...)))
+     * }</pre>
+     *
+     * @return the handle for this fixture (can be ignored if using the class-based then() overload)
+     */
     <T> FixtureHandle<T> fixture(Class<T> entityType, FixtureTrait<? super T>... traits);
 
     <T> GivenSpec fixture(String alias, Class<T> entityType, FixtureTrait<? super T>... traits);
@@ -21,6 +32,11 @@ public interface GivenSpec {
 
     // --- Builder-based (inline construction) ---
 
+    /**
+     * Declares a fixture with inline builder, using {@code entityType.getSimpleName()} as alias.
+     *
+     * @return the handle for this fixture (can be ignored if using the class-based then() overload)
+     */
     <T> FixtureHandle<T> fixture(Class<T> entityType, Consumer<FixtureBuilder<T>> builder);
 
     <T> GivenSpec fixture(String alias, Class<T> entityType, Consumer<FixtureBuilder<T>> builder);
