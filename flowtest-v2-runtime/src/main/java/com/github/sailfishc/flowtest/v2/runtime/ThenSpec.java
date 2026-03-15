@@ -54,8 +54,12 @@ public interface ThenSpec<R> {
     // --- Fixture assertions (alias-first, auto-infers observation) ---
 
     /**
-     * Fixture assertion by type. Uses {@code type.getSimpleName()} as the alias.
-     * Suitable when there is only one fixture per entity type.
+     * Fixture assertion by type. Uses {@code type.getSimpleName()} as the default alias.
+     *
+     * <p><strong>Important:</strong> This shorthand is valid only when exactly one fixture of the
+     * given type is declared in {@code given()} and its alias matches the default (simpleName).
+     * If multiple fixtures of the same type exist, use {@link #fixture(String, Class, Consumer)}
+     * with an explicit alias, or use the {@link FixtureHandle} returned from {@code given().fixture(...)}.
      *
      * <pre>{@code
      * .given(g -> g.fixture(User.class, withBalance(100L)))
@@ -64,8 +68,14 @@ public interface ThenSpec<R> {
      */
     <T> ThenSpec<R> fixture(Class<T> type, Consumer<FixtureExpectationSpec<T>> spec);
 
+    /**
+     * Fixture assertion by explicit handle. Preferred when multiple fixtures of the same type exist.
+     */
     <T> ThenSpec<R> fixture(FixtureHandle<T> handle, Consumer<FixtureExpectationSpec<T>> spec);
 
+    /**
+     * Fixture assertion by alias and type. Use when multiple fixtures of the same type are declared.
+     */
     <T> ThenSpec<R> fixture(String alias, Class<T> type, Consumer<FixtureExpectationSpec<T>> spec);
 
     // --- Global escape hatch ---

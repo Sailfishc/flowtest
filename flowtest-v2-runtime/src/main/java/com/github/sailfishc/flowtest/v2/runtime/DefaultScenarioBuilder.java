@@ -306,8 +306,6 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
         // Track inferred observation resources from then(...)
         private final Set<String> inferredTableResources = new LinkedHashSet<String>();
         private final Set<Class<?>> inferredEntityResources = new LinkedHashSet<Class<?>>();
-        // Track fixture aliases referenced in then(...)
-        private final Set<String> inferredFixtureAliases = new LinkedHashSet<String>();
         private final Set<FixtureHandle<?>> inferredFixtureHandles = new LinkedHashSet<FixtureHandle<?>>();
 
         private DefaultScenarioPlan(String name,
@@ -399,19 +397,6 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
                     explicitResourceNames.add(handle.getType().getName());
                 }
             }
-            for (String alias : inferredFixtureAliases) {
-                boolean alreadyPresent = false;
-                for (ObservationSpec obs : merged) {
-                    if (alias.equals(obs.getFixtureAlias())
-                        || (obs.getFixtureHandle() != null && alias.equals(obs.getFixtureHandle().getName()))) {
-                        alreadyPresent = true;
-                        break;
-                    }
-                }
-                if (!alreadyPresent) {
-                    merged.add(ObservationSpec.fixture(alias));
-                }
-            }
 
             return merged;
         }
@@ -430,9 +415,7 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
             inferredFixtureHandles.add(handle);
         }
 
-        void trackFixtureAlias(String alias) {
-            inferredFixtureAliases.add(alias);
-        }
+
 
         // --- Expectation registration ---
 
@@ -581,8 +564,8 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
 
         @Override
         public <T> ThenSpec<R> fixture(String alias, Class<T> type, Consumer<FixtureExpectationSpec<T>> spec) {
-            plan.trackFixtureAlias(alias);
             FixtureHandle<T> handle = FixtureHandle.named(type, alias);
+            plan.trackFixtureHandle(handle);
             DefaultFixtureExpectationSpec<R, T> fixtureSpec = new DefaultFixtureExpectationSpec<R, T>(plan, handle);
             spec.accept(fixtureSpec);
             return this;
@@ -753,17 +736,6 @@ public final class DefaultScenarioBuilder implements ScenarioBuilder {
 
         @Override
         public FixtureExpectationSpec<T> before(final FixtureAssertion<T> assertion) {
-            // before uses resolve (the materialized entity before action)
-            plan.addFixtureExpectation(new FixtureStateExpectation<T>(handle, new FixtureAssertion<T>() {
-                @Override
-                public void verify(T value) {
-                    // Note: FixtureStateExpectation reloads; for "before" we need a different path.
-                    // We'll use FixtureChangeExpectation to get access to both before and after.
-                    // This is handled by converting to a change expectation.
-                }
-            }));
-            // Actually, let's use fixtureChange to get before access
-            plan.fixtureExpectations.remove(plan.fixtureExpectations.size() - 1);
             plan.addFixtureChangeExpectation(new FixtureChangeExpectation<T>(handle,
                 new FixtureChangeAssertion<T>() {
                     @Override

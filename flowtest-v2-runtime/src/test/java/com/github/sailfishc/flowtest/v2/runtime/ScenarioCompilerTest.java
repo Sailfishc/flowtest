@@ -199,7 +199,141 @@ class ScenarioCompilerTest {
                 .then(t -> t.fixture(ghost, user -> user.after(v -> {})))
                 .compile()
         ).isInstanceOf(ScenarioValidationException.class)
-            .hasMessageContaining("Fixture expectation references undeclared handle");
+            .hasMessageContaining("references undeclared handle");
+    }
+
+    // ==================================================================================
+    // P0-1: Duplicate observation resourceName detection
+    // ==================================================================================
+
+    @Test
+    void rejectsDuplicateObservationResourceName() {
+        assertThatThrownBy(() ->
+            FlowTestV2.scenario("duplicate-observation")
+                .observe(o -> {
+                    o.table("t_order");
+                    o.table("t_order");
+                })
+                .when(() -> "ok")
+                .compile()
+        ).isInstanceOf(ScenarioValidationException.class)
+            .hasMessageContaining("Duplicate observed resource 't_order'");
+    }
+
+    @Test
+    void rejectsDuplicateEntityObservationWithDifferentRoutes() {
+        assertThatThrownBy(() ->
+            FlowTestV2.scenario("duplicate-entity-observation")
+                .observe(o -> {
+                    o.entity(User.class, r -> r.route("tenant_id", 100L));
+                    o.entity(User.class, r -> r.route("tenant_id", 200L));
+                })
+                .when(() -> "ok")
+                .compile()
+        ).isInstanceOf(ScenarioValidationException.class)
+            .hasMessageContaining("Duplicate observed resource")
+            .hasMessageContaining("unique within a scenario");
+    }
+
+    // ==================================================================================
+    // P0-2: Unsupported CleanupPolicy early rejection
+    // ==================================================================================
+
+    @Test
+    void rejectsRollbackCleanupPolicy() {
+        assertThatThrownBy(() ->
+            FlowTestV2.scenario("rollback-cleanup")
+                .cleanup(CleanupPolicy.ROLLBACK)
+                .when(() -> "ok")
+                .then(t -> t.success())
+                .compile()
+        ).isInstanceOf(ScenarioValidationException.class)
+            .hasMessageContaining("CleanupPolicy.ROLLBACK is not supported");
+    }
+
+    @Test
+    void rejectsCustomCompensatorCleanupPolicy() {
+        assertThatThrownBy(() ->
+            FlowTestV2.scenario("custom-compensator")
+                .cleanup(CleanupPolicy.CUSTOM_COMPENSATOR)
+                .when(() -> "ok")
+                .then(t -> t.success())
+                .compile()
+        ).isInstanceOf(ScenarioValidationException.class)
+            .hasMessageContaining("CleanupPolicy.CUSTOM_COMPENSATOR is not supported");
+    }
+
+    @Test
+    void acceptsDeleteInsertedCleanupPolicy() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("delete-inserted")
+            .cleanup(CleanupPolicy.DELETE_INSERTED)
+            .when(() -> "ok")
+            .then(t -> t.success())
+            .compile();
+
+        assertThat(compiled.getDefinition().getCleanupPolicy()).isEqualTo(CleanupPolicy.DELETE_INSERTED);
+    }
+
+    @Test
+    void acceptsRestoreBeforeImageCleanupPolicy() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("restore-before")
+            .cleanup(CleanupPolicy.RESTORE_BEFORE_IMAGE)
+            .when(() -> "ok")
+            .then(t -> t.success())
+            .compile();
+
+        assertThat(compiled.getDefinition().getCleanupPolicy()).isEqualTo(CleanupPolicy.RESTORE_BEFORE_IMAGE);
+    }
+
+    // ==================================================================================
+    // P0-2: Ambiguous same-type fixture expectations
+    // ==================================================================================
+
+    @Test
+    void rejectsAmbiguousFixtureExpectationWithMultipleSameTypeFixtures() {
+        assertThatThrownBy(() ->
+            FlowTestV2.scenario("ambiguous-fixture")
+                .given(g -> {
+                    g.fixture("alice", User.class, FixtureTrait.set(User::setId, 1L));
+                    g.fixture("bob", User.class, FixtureTrait.set(User::setId, 2L));
+                })
+                .when(() -> "ok")
+                // Using Class-based shorthand is ambiguous when multiple same-type fixtures exist
+                .then(t -> t.fixture(User.class, u -> u.after(v -> {})))
+                .compile()
+        ).isInstanceOf(ScenarioValidationException.class)
+            .hasMessageContaining("ambiguous")
+            .hasMessageContaining("multiple fixtures");
+    }
+
+    @Test
+    void rejectsFixtureExpectationWithMismatchedDefaultAlias() {
+        assertThatThrownBy(() ->
+            FlowTestV2.scenario("mismatched-alias")
+                .given(g -> g.fixture("primaryUser", User.class, FixtureTrait.set(User::setId, 1L)))
+                .when(() -> "ok")
+                // Class-based shorthand uses "User" as alias, but fixture is "primaryUser"
+                .then(t -> t.fixture(User.class, u -> u.after(v -> {})))
+                .compile()
+        ).isInstanceOf(ScenarioValidationException.class)
+            .hasMessageContaining("default alias")
+            .hasMessageContaining("primaryUser");
+    }
+
+    @Test
+    void acceptsExplicitAliasForMultipleSameTypeFixtures() {
+        CompiledScenario<String> compiled = FlowTestV2.scenario("explicit-alias")
+            .given(g -> {
+                g.fixture("alice", User.class, FixtureTrait.set(User::setId, 1L));
+                g.fixture("bob", User.class, FixtureTrait.set(User::setId, 2L));
+            })
+            .when(() -> "ok")
+            .then(t -> t
+                .fixture("alice", User.class, u -> u.after(v -> {}))
+                .fixture("bob", User.class, u -> u.after(v -> {})))
+            .compile();
+
+        assertThat(compiled.getDefinition().getFixtures()).hasSize(2);
     }
 
     private static final class User {
